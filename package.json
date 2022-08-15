@@ -6,6 +6,7 @@
   "author": "Harleythetech",
   "license": "GPU 3.0",
   "dependencies": {
+    "discord.js-commando": "git+https://github.com/discordjs/Commando.git",
     "@discordjs/opus": "^0.4.0",
     "ascii-table": "^0.0.9",
     "beautify": "^0.0.8",
