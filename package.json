@@ -1,0 +1,23 @@
+{
+  "name": "chiyoko-haruka-v0.2.r002s",
+  "version": "1.0.0",
+  "description": "a discord bot made for fun",
+  "main": "index.js",
+  "scripts": {
+    "test": ".chiyoko"
+  },
+  "keywords": [
+    "bot",
+    "discord",
+    "JS"
+  ],
+  "author": "Harleythetech",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/rest": "^1.7.0",
+    "discord.js": "^14.9.0",
+    "dotenv": "^16.0.3",
+    "got": "^12.6.0",
+    "parse-ms": "^3.0.0"
+  }
+}
