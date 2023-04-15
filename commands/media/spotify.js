@@ -22,7 +22,7 @@ module.exports = {
       return interaction.reply(`${user} is not listening to Spotify`);
     }
     const image = `https://i.scdn.co/image/${status.assets.largeImage.slice(8)}`;
-    const url = status.external_urls.spotify;
+    const url = `https://open.spotify.com/search/${encodeURIComponent(status.details)}%20${encodeURIComponent(status.state)}`;
     const name = status.details;
     const artist = status.state;
     const album = status.assets.largeText;
