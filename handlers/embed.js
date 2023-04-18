@@ -17,4 +17,12 @@ const bug = new EmbedBuilder()
 .setImage('https://c.tenor.com/_3mSq0fET5oAAAAC/tenor.gif')
 .setTimestamp()
 .setFooter({text: 'Chiyoko Haruka: V0.2.r002s'});
-module.exports = {active, bug};
+
+const toomuch = new EmbedBuilder()
+.setColor(0x0099ff)
+.setTitle(`Beep Boop...`)
+.setDescription(`Two or more services detected, Bot Can only handle one at a time. `)
+.setImage('https://c.tenor.com/_3mSq0fET5oAAAAC/tenor.gif')
+.setTimestamp()
+.setFooter({text: 'Chiyoko Haruka: V0.2.r002s'});
+module.exports = {active, bug , toomuch};
