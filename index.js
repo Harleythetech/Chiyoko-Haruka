@@ -1,5 +1,5 @@
 const fs = require('fs');
-const {Client, Events, GatewayIntentBits, Collection} = require('discord.js');
+const {Client, Events, GatewayIntentBits, Collection, ActivityType} = require('discord.js');
 const client = new Client ({intents:[GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences],  disableMentions: "all" });
 require('dotenv').config();
 const path = require ('path');
@@ -10,11 +10,17 @@ const {active, bug}= require ('./handlers/embed.js')
 
 client.on(Events.ClientReady, c => {
     console.log(`${c.user.tag} >> System is now loaded and is ready to have fun!`);
-    client.user.setActivity("JS: v.0.1.ch1r.canary", {type: "PLAYING"});
+    client.user.setActivity('for system errors', { type: ActivityType.Watching });
     const logch = client.channels.cache.get(process.env.chid);
     logch.send({embeds: [active]});
+    heartbeat();
 });
 
+function heartbeat(){
+    setInterval(()=> {
+        console.log("[Ping]", client.ws.ping, "Makeshift Heartbeat acknowledged");
+    },30000);
+}
 
 client.commands = new Collection();
 for (const folder of commandFolders){
@@ -58,4 +64,5 @@ process.on('unhandledRejection', error => {
   process.on('uncaughtException', error => {
     console.error('Uncaught exception:', error);
   });
+
 client.login(process.env.TOKEN);
