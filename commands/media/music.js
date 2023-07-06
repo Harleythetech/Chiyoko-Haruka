@@ -15,52 +15,13 @@ module.exports = {
             try{
                 const user = interaction.options.getUser('user') || interaction.user;
                 const member = interaction.guild.members.cache.get(user.id);
-                console.log(member.presence.activities);
+                
 
-                const media = member.presence.activities.find(activity => activity.name === 'MusicBee' || activity.name === 'Spotify' || activity.name === 'foobar2000');
+                const media = member.presence.activities.find(activity => activity.name === 'Spotify' || activity.name);
                 //MusicBee
                 if(!media){
                     return interaction.reply(`${user} is not listening to any of the supported services`);
-                }else if(member.presence.activities.find(activity => activity.name === 'MusicBee')){
-                const mimage  = `https://${media.assets.largeImage?.split('https/')[1]}`;
-                console.log(`[Debug] link:  ${mimage}`)
-                const aa = media.details;
-                const [martist, malbum] = aa.split(' - ');
-                const murl = `https://open.spotify.com/search/${encodeURIComponent(media.state)}%20${encodeURIComponent(martist)}`;
-                const msong = media.state;
-                const membed = new EmbedBuilder()
-                .setTitle('Currently Playing on MusicBee')
-                .setColor(0xffbf00)
-                .addFields(
-                    {name: 'Song', value: msong, inline: true}, 
-                    {name: 'Artist', value: martist, inline: true},
-                    {name: 'Album', value: malbum, inline: true},
-                )
-                .setFooter({text: `Requested by ${interaction.user.tag}`})
-                .setTimestamp()
-                .setImage('https://i.gyazo.com/4e7a4b6834400626ecf0a45d370e1f20.png')
-                
-                if(mimage === 'https://undefined'){
-                    membed.setImage('https://i.gyazo.com/4e7a4b6834400626ecf0a45d370e1f20.png');
-                    membed.setDescription(`Image for the said track is currently unavailable`);
-                }else{
-                    membed.setImage(mimage);
-                }
-
-                const btn = new ButtonBuilder()
-                .setLabel('Play in Spotify')
-                .setStyle(ButtonStyle.Link)
-                .setURL(murl);
-                
-                const row = new ActionRowBuilder()
-                .addComponents(btn)
-
-                return interaction.reply({
-                    embeds: [membed],
-                    components: [row]
-
-                });
-            }else if(member.presence.activities.find(activity => activity.name === 'Spotify')){
+                }else if(member.presence.activities.find(activity => activity.name === 'Spotify')){
                 const { default: convert } = await import('parse-ms');
                 const simage = `https://i.scdn.co/image/${media.assets.largeImage.slice(8)}`;
                 const surl = `https://open.spotify.com/search/${encodeURIComponent(media.details)}%20${encodeURIComponent(media.state)}`;
@@ -99,19 +60,30 @@ module.exports = {
                     embeds: [sembed],
                     components: [row],
                 });
-            }else if(member.presence.activities.find(activity => activity.name === 'foobar2000')){
-                const aa = media.details;
+            }else{
+                const mimage  = `https://${media.assets.largeImage?.split('https/')[1]}`;
+                console.log(mimage);
+                const aa = media.details || "Undefined";
                 const furl = `https://open.spotify.com/search/${encodeURIComponent(aa)}`;
-                const fsong = media.state;
+                const fsong = media.state || "Undefined";
                 const fembed = new EmbedBuilder()
-                .setTitle('Currently Playing on foobar2000')
+                .setTitle(`Currently Playing on ${media.name || "Undefined"}`)
                 .setColor(0xffbf00)
+                .setDescription('Warning: if the bot says undefined then it\'s probably because you have a custom status set.')
                 .addFields(
                     {name: 'Song', value: fsong}, 
                     {name: 'Artist/Album', value: aa},
                 )
                 .setFooter({text: `Requested by ${interaction.user.tag}`})
                 .setTimestamp()
+                .setImage('https://i.gyazo.com/4e7a4b6834400626ecf0a45d370e1f20.png')
+                
+                if(mimage === 'https://undefined'){
+                    fembed.setImage('https://i.gyazo.com/4e7a4b6834400626ecf0a45d370e1f20.png');
+                    fembed.setDescription(`Warning: Image for the said track is currently unavailable`);
+                }else{
+                    fembed.setImage(mimage);
+                }
                 
                 const btn = new ButtonBuilder()
                 .setLabel('Play in Spotify')
@@ -129,7 +101,7 @@ module.exports = {
             }
 
             }catch(error){
-                console.error(`[Error] Command Overload: Two or more services detected, Bot Can only handle one at a time.`);
+                console.error(`[Error] Command Overload: Two or more services detected, Bot Can only handle one at a time. ${error}`);
                 return interaction.reply({embeds: [toomuch]});
             }
         }
