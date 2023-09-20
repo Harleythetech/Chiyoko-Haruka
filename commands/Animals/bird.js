@@ -9,14 +9,16 @@ module.exports = {
         try{
         console.log(`[LOG] Bird Facts has been triggered`)
         const {default: fetch} = await import('node-fetch');
-        const res = await fetch('http://shibe.online/api/birds');
-        const fact = await fetch('https://some-random-api.ml/facts/bird');
-        const faact = (await fact.json()).fact;
-        const image = (await res.json())[0];
+        const response = await fetch('https://some-random-api.com/animal/bird');
+        const data = (await response.json());
+
+        const fact = data.fact;
+        const img = data.image;
+
         const embed = new EmbedBuilder()
         .setTitle('Bird Facts!')
-        .setDescription(faact)
-        .setImage(image)
+        .setDescription(fact)
+        .setImage(img)
         .setFooter({text: `Requested by ${interaction.user.tag}`})
         .setTimestamp()
         .setColor(0x22e4cc);

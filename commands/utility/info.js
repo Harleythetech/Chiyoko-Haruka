@@ -11,7 +11,7 @@ module.exports = {
         const uname = interaction.user.username;
         const intro = new EmbedBuilder()
         .setTitle(config.BOT_NAME)
-        .setDescription(`Hello ${uname} I\'m ${config.BOT_NAME}\, My Prefix is "/" and i\'m currently under development so please have patience in me\, If you need any help my creator **ハーレイ#3380** will be happy to assist you with any concerns you have\, Thank you for testing me out!`)
+        .setDescription(`Hello ${uname} I\'m ${config.BOT_NAME}\, My Prefix is "/" and i\'m currently under development so please have patience in me\, If you need any help my creator **Harleyyyu** will be happy to assist you with any concerns you have\, Thank you for testing me out!`)
         .setImage(`https://i.imgur.com/mwOFCBO.png`)
         .setTimestamp()
         .setFooter({text: `${config.BOT_NAME} \: ${config.BOT_VERSION}`})

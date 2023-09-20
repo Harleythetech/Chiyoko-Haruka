@@ -9,13 +9,15 @@ module.exports = {
         try{
         console.log(`[LOG] cat Facts has been triggered`)
         const {default: fetch} = await import('node-fetch');
-        const res = await fetch('https://some-random-api.ml/img/cat');
-        const fact = await fetch('https://some-random-api.ml/facts/cat');
-        const faact = (await fact.json()).fact;
-        const image = (await res.json()).link;
+        const response = await fetch('https://some-random-api.com/animal/cat');
+        const Data = await response.json();
+  
+        const image = Data.image;
+        const fact = Data.fact;
+  
         const embed = new EmbedBuilder()
         .setTitle('Cat Facts!')
-        .setDescription(faact)
+        .setDescription(fact)
         .setImage(image)
         .setFooter({text: `Requested by ${interaction.user.tag}`})
         .setTimestamp()

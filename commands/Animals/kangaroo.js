@@ -9,13 +9,15 @@ module.exports = {
         try{
         console.log(`[LOG] Kangaroo Facts has been triggered`)
         const {default: fetch} = await import('node-fetch');
-        const res = await fetch('https://some-random-api.ml/animal/kangaroo');
-        const fact = await fetch('https://some-random-api.ml/animal/kangaroo');
-        const faact = (await fact.json()).fact;
-        const image = (await res.json()).image;
+        const api = await fetch('https://some-random-api.com/animal/kangaroo');
+        const response = (await api.json());
+
+        const fact = response.fact;
+        const image = response.image;
+
         const embed = new EmbedBuilder()
         .setTitle('Kangaroo Facts!')
-        .setDescription(faact)
+        .setDescription(fact)
         .setImage(image)
         .setFooter({text: `Requested by ${interaction.user.tag}`})
         .setTimestamp()

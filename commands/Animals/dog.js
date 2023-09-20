@@ -9,13 +9,15 @@ module.exports = {
         try{
         console.log(`[LOG] dog Facts has been triggered`)
         const {default: fetch} = await import('node-fetch');
-        const res = await fetch('https://dog.ceo/api/breeds/image/random');
-        const fact = await fetch('https://some-random-api.ml/facts/dog');
-        const faact = (await fact.json()).fact;
-        const image = (await res.json()).message;
+        const api = await fetch('https://some-random-api.com/animal/dog');
+        const response = (await api.json());
+
+        const fact = response.fact;
+        const image = response.image;
+
         const embed = new EmbedBuilder()
         .setTitle('Dog Facts!')
-        .setDescription(faact)
+        .setDescription(fact)
         .setImage(image)
         .setFooter({text: `Requested by ${interaction.user.tag}`})
         .setTimestamp()
