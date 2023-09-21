@@ -1,4 +1,4 @@
-const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle} = require('discord.js');
 const config = require(`../../handlers/config.json`)
 
 module.exports = {
@@ -6,7 +6,7 @@ module.exports = {
     .setName(`introduction`)
     .setDescription(`Bot\'s Introduction`),
     async execute(interaction){
-        console.log(`[LOG] Info-Check has been executed`);
+        console.log(`[LOG] Bot Introduction has been executed`);
         try{
         const uname = interaction.user.username;
         const intro = new EmbedBuilder()
@@ -15,7 +15,22 @@ module.exports = {
         .setImage(`https://i.imgur.com/mwOFCBO.png`)
         .setTimestamp()
         .setFooter({text: `${config.BOT_NAME} \: ${config.BOT_VERSION}`})
-        return interaction.reply({embeds: [intro]})
+
+        const proj = new ButtonBuilder()
+        .setLabel('Github Project')
+        .setStyle(ButtonStyle.Link)
+        .setURL(config.INVLINK);
+
+        const add = new ButtonBuilder()
+        .setLabel('Report Issues here!')
+        .setStyle(ButtonStyle.Link)
+        .setURL(config.GITHUB_ISSUES);
+        
+        const row = new ActionRowBuilder()
+            .addComponents(proj)
+            .addComponents(add)
+
+        return interaction.reply({embeds: [intro], components:[row]})
         }catch(error){
             console.error(error);
         }
