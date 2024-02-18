@@ -6,6 +6,8 @@ const path = require ('path');
 const folderPath = path.join(__dirname, 'commands');
 const commandFolders = fs.readdirSync(folderPath);
 const {active, bug}= require ('./handlers/embed.js')
+const twitch = require('./Stream/Twitch.js');
+const youtube = require('./Stream/Youtube.js');
 
 
 client.on(Events.ClientReady, c => {
@@ -49,10 +51,10 @@ client.on(Events.InteractionCreate, async interaction =>{
 
     }catch(error){
         if (interaction.replied || interaction.deferred) {
-			await interaction.followUp({ content: 'There was an error while executing this command!'});
+			await interaction.followUp({embeds: [bug]});
             console.log(error);
 		} else {
-			await interaction.reply({ content: 'There was an error while executing this command!'});
+			await interaction.followUp({embeds: [bug]});
             console.log(error);
 		}
     }

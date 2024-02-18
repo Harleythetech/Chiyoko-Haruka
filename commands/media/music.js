@@ -1,27 +1,38 @@
 const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle} = require('discord.js');
-const {toomuch} = require('../../handlers/embed.js');
+const {toomuch, notlistening} = require('../../handlers/embed.js');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('playcheck')
     .setDescription('Displays the information of track playing')
+    .addStringOption(option =>
+        option.setName('type')
+        .setDescription('What Status Type to check')
+        .addChoices(
+            {name: 'Spotify', value: '2'},
+            {name: 'MusicBee / Foobar2000', value: '0'}
+        )
+        .setRequired(true)
+    )
     .addUserOption(option =>
-      option.setName('user')
-        .setDescription('want to know what they are listening')
-        .setRequired(false)
+        option.setName('user')
+          .setDescription('want to know what they are listening')
+          .setRequired(false),
     ),
         async execute(interaction){
             console.log(`[LOG] Media Check has been executed`);
             try{
                 const user = interaction.options.getUser('user') || interaction.user;
+                const PlaybackType = interaction.options.getString('type');
                 const member = interaction.guild.members.cache.get(user.id);
                 
 
-                const media = member.presence.activities.find(activity => activity.name === 'Spotify' || activity.name);
+                const media = member.presence.activities.find((activity => activity.name === 'Spotify'));
+                const unimedia = member.presence.activities.find((activity => activity.type == 0));
+                console.log(media || unimedia);
+                console.log(PlaybackType);
                 //MusicBee
-                if(!media){
-                    return interaction.reply(`${user} is not listening to any of the supported services`);
-                }else if(member.presence.activities.find(activity => activity.name === 'Spotify')){
+                if(PlaybackType == '2' && media != undefined){
                 const { default: convert } = await import('parse-ms');
                 const simage = `https://i.scdn.co/image/${media.assets.largeImage.slice(8)}`;
                 const surl = `https://open.spotify.com/search/${encodeURIComponent(media.details)}%20${encodeURIComponent(media.state)}`;
@@ -60,16 +71,18 @@ module.exports = {
                     embeds: [sembed],
                     components: [row],
                 });
-            }else{
-                const mimage  = `https://${media.assets.largeImage?.split('https/')[1]}`;
+            }else if (PlaybackType == '0' && unimedia != undefined){
+                const mimage  = `https://${unimedia.assets.largeImage?.split('https/')[1]}`;
                 console.log(mimage);
-                const aa = media.details || "Undefined";
-                const furl = `https://open.spotify.com/search/${encodeURIComponent(aa)}`;
-                const fsong = media.state || "Undefined";
+
+                const aa = unimedia.details || "Undefined";
+                const fsong = unimedia.state || "Undefined";
+                const furl = `https://open.spotify.com/search/${encodeURIComponent(fsong)}`;
+
                 const fembed = new EmbedBuilder()
-                .setTitle(`Currently Playing on ${media.name || "Undefined"}`)
+
+                .setTitle(`Currently Playing on ${unimedia.name || "Undefined"}`)
                 .setColor(0xffbf00)
-                .setDescription('Warning: if the bot says undefined then it\'s probably because you have a custom status set.')
                 .addFields(
                     {name: 'Song', value: fsong}, 
                     {name: 'Artist/Album', value: aa},
@@ -98,6 +111,8 @@ module.exports = {
                     components: [row]
 
                 });
+            }else {
+                return interaction.reply({embeds: [notlistening]});
             }
 
             }catch(error){

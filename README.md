@@ -63,9 +63,6 @@ You are almost at the end! all you need to do is run the ```npm install``` (one 
 ```
 Command Fist Time Install (if newley downloaded)
 npm install
-npm install discord.js
-npm install stop-discord-phishing
-npm install node-fetch
 node comdep.js or comdepGlobal.js
 node index.js
 ```

@@ -12,7 +12,7 @@ module.exports = {
         const ping = new EmbedBuilder()
         .setColor(0x0099ff)
         .setTitle(`🏓ping pong`)
-        .setDescription(`**Latency: ${Date.now() - interaction.createdTimestamp}ms**\n**API Latency: ${Math.round(interaction.client.ws.ping)}ms**`)
+        .setDescription(`**Server: ** Local Server (Private) \n**Latency: **${Date.now() - interaction.createdTimestamp}ms \n**API:** ${Math.round(interaction.client.ws.ping)}ms`)
         .setImage('https://media2.giphy.com/media/ECwTCTrHPVqKI/giphy.gif?cid=ecf05e47pyut03gtv3uo3ok10nosqd106gdwct60ptftxw51&rid=giphy.gif&ct=g')
         .setTimestamp()
         .setFooter({text: config.BOT_NAME + ':' + config.BOT_VERSION});
