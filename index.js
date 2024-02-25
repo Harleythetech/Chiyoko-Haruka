@@ -1,6 +1,6 @@
 const fs = require('fs');
 const {Client, Events, GatewayIntentBits, Collection, ActivityType} = require('discord.js');
-const client = new Client ({intents:[GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences],  disableMentions: "all" });
+const client = new Client ({intents:[GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],  disableMentions: "all" });
 require('dotenv').config();
 const path = require ('path');
 const folderPath = path.join(__dirname, 'commands');
@@ -8,11 +8,38 @@ const commandFolders = fs.readdirSync(folderPath);
 const {active, bug}= require ('./handlers/embed.js')
 const twitch = require('./Stream/Twitch.js');
 const youtube = require('./Stream/Youtube.js');
+const ver = require('./handlers/config.json');
 
+let status =[
+    {
+        name: 'with Discord API',
+        type: 'PLAYING'
+    },
+    {
+        name: client.guilds.cache.size + ' servers',
+        type: 'WATCHING'
+    },
+    {
+        name: 'Version ' + ver.BOT_VERSION,
+        type: 'PLAYING'
+    },
+    {
+        name: 'Creator Might be Streaming',
+        type: 'STREAMING',
+        url: 'https://www.twitch.tv/Harleyyu_'
+    }
+
+]
 
 client.on(Events.ClientReady, c => {
     console.log(`${c.user.tag} >> System is now loaded and is ready to have fun!`);
-    client.user.setActivity('for system errors', { type: ActivityType.Watching });
+
+    setInterval(() => {
+        const random = status[Math.floor(Math.random() * status.length)];
+        client.user.setActivity(random.name, {type: random.type, url: random.url});
+        console.log(`[Status] ${random.type} ${random.name}`);
+    }, 40000);
+
     const logch = client.channels.cache.get(process.env.chid);
     logch.send({embeds: [active]});
     heartbeat();
@@ -38,7 +65,6 @@ for (const folder of commandFolders){
         }
     }
 }
-
 
 
 
