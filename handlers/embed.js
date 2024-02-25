@@ -62,7 +62,7 @@ const notoncall = new EmbedBuilder()
 
 const left = new EmbedBuilder()
 .setColor(0x0099ff)
-.setTitle(`I got kicked out of the  voice channel.`)
+.setTitle(`I got kicked out of the voice channel.`)
 .setDescription(`Why must you do this to me?`)
 .setImage('https://gifdb.com/images/high/asteroid-in-love-anime-mai-crying-9e0su1232jzo9y01.gif')
 .setTimestamp()

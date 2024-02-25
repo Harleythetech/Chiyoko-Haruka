@@ -3,6 +3,7 @@ const {bug, failedtoplay, notoncall, left} = require('../../handlers/embed.js');
 const ytdl = require('ytdl-core');
 const { createAudioPlayer, generateDependencyReport, createAudioResource, StreamType, joinVoiceChannel, getVoiceConnection, AudioPlayerStatus, AudioPlayer } = require('@discordjs/voice');
 const player = createAudioPlayer();
+const BOT_VERSION = 'V0.4.S.NightByte';
 
 
 module.exports = {
@@ -59,7 +60,7 @@ module.exports = {
             
         };
         }catch(error){
-            Console.error(error);
+            console.error(error);
             return interaction.reply({embeds: [notoncall], ephemeral: true});
         }
       }
@@ -175,9 +176,9 @@ async function dc(interaction){
     const voiceChannel = interaction.member.voice.channel;
     const connection = getVoiceConnection(voiceChannel.guild.id);
     connection.destroy();
-    await interaction.editReply({embed: [left]});
+    await interaction.editReply({embeds: [left]});
     }catch(error){
-        console.error('Error playing song:', error);
+        console.error(error);
         await interaction.editReply({embed:bug, ephemeral: true});
     }
 }
@@ -190,7 +191,14 @@ async function pause(interaction){
     const connection = getVoiceConnection(voiceChannel.guild.id);
     player.pause();
     connection.subscribe(player);
-    await interaction.editReply({content: `${interaction.user.tag} Paused Music`});
+    const pau = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle(`Beep Boop...`)
+        .setDescription(`${interaction.user.tag} Paused Music`)
+        .setImage('https://media1.tenor.com/m/XTl1q0gJIF8AAAAd/tsurezure-children-put-phone-down.gif')
+        .setTimestamp()
+        .setFooter({text: BOT_VERSION});
+    await interaction.editReply({embeds: [pau]});
     }catch(error){
         console.error('Error playing song:', error);
         await interaction.editReply({embed: bug, ephemeral: true});
@@ -204,7 +212,14 @@ async function resume(interaction){
     const connection = getVoiceConnection(voiceChannel.guild.id);
     player.unpause();
     connection.subscribe(player);
-    await interaction.editReply({content: `${interaction.user.tag} Paused Music`});
+    const tap = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle(`Beep Boop...`)
+        .setDescription(`${interaction.user.tag} resumed the music`)
+        .setImage('https://media1.tenor.com/m/d_IO8M1rCD0AAAAC/listening-to-music-jerry.gif')
+        .setTimestamp()
+        .setFooter({text: BOT_VERSION});
+    await interaction.editReply({embeds: [tap]});
     }catch(error){
         console.error('Error playing song:', error);
         await interaction.editReply({embed: failedtoplay, ephemeral: true});
@@ -218,7 +233,14 @@ async function stop(interaction){
     const connection = getVoiceConnection(voiceChannel.guild.id);
     player.stop();
     connection.subscribe(player);
-    await interaction.editReply({content: `${interaction.user.tag} Paused Music`});
+    const tap = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle(`Beep Boop...`)
+        .setDescription(`${interaction.user.tag} Stopped the music`)
+        .setImage('https://media1.tenor.com/m/1NTLzvJ1yQ8AAAAC/michael-jordan-stop-it.gif')
+        .setTimestamp()
+        .setFooter({text: BOT_VERSION});
+    await interaction.editReply({embeds: [tap]});
     }catch(error){
         console.error('Error playing song:', error);
         await interaction.editReply({embed: bug, ephemeral: true});
