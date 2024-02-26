@@ -1,5 +1,6 @@
 const fs = require('fs');
 const {Client, Events, GatewayIntentBits, Collection, ActivityType} = require('discord.js');
+const {getVoiceConnection} = require('@discordjs/voice');
 const client = new Client ({intents:[GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],  disableMentions: "all" });
 require('dotenv').config();
 const path = require ('path');
@@ -44,7 +45,16 @@ client.on(Events.ClientReady, c => {
     logch.send({embeds: [active]});
     heartbeat();
 });
-
+client.on('voiceStateUpdate', (oldState, newState) => {
+    // Check if the user is a bot and if the bot was disconnected
+    if (newState.member.user.bot && newState.channel === null && oldState.channel) {
+        const connection = getVoiceConnection(oldState.guild.id);
+        if (connection) {
+            // Bot has been disconnected from the voice channel
+            reset(); // Reset data on disconnection
+        }
+    }
+});
 function heartbeat(){
     setInterval(()=> {
         console.log("[Ping]", client.ws.ping, "Makeshift Heartbeat acknowledged");
