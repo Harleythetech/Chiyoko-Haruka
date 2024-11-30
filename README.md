@@ -1,6 +1,6 @@
 <p align="center"><img src="https://i.imgur.com/mwOFCBO.png" width="260" height="220"></p>
 
-### <p align="center">Chiyoko Haruka - v2.r002s</p>
+### <p align="center">Chiyoko Haruka - V5.0 - Catalyst</p>
 ------------------------------------------------------
 Chiyoko Haruka is a feature-packed Discord bot designed to provide a wide range of useful features and utilities to users. One of its unique features is the ILoveYou command, which is designed to reject user confessions in a lighthearted and humorous way.
 
