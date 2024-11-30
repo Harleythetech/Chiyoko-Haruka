@@ -44,9 +44,9 @@ just click on the "add bot" to then name it whatever you want below that you sho
 sample code:
 ```
 TOKEN=IOPAJDSFOAGDFOUGHNLBVILUH1235634OIUJDFG
-chid=1234537685697585
-appid=23145264578458613
-guid=234534637316345
+APP_ID=1234537685697585
+GUILD_ID=23145264578458613
+CHANNEL_ID=234534637316345
 ```
 For AppID you should be able to get that from ```General Information> ApplicationID``` from Discord Developer Portal
 
@@ -63,18 +63,7 @@ You are almost at the end! all you need to do is run the ```npm install``` (one 
 ```
 Command Fist Time Install (if newley downloaded)
 npm install
-node comdep.js or comdepGlobal.js
-node index.js
-```
-
-```
-Command (bot / command only works on selected GUILD)
-node comdep.js 
-node index.js
-```
-```
-Command (bot / command works Global)
-node comdepGlobal.js 
+node CommandPush.js
 node index.js
 ```
 
