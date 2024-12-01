@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const config = require ('../../handlers/config.json')
-
+const {bug} = require('../../handlers/embed.js');
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('ping')
@@ -18,7 +18,8 @@ module.exports = {
         console.log(`Latency: ${Date.now() - interaction.createdTimestamp}ms\nAPI Latency: ${Math.round(interaction.client.ws.ping)}ms`);
                 return interaction.reply({embeds: [ping]});
         }catch(error){
-          console.error(error);
+          await interaction.reply({embeds: [bug]});
+          global.reportError(error, `Ping`, `Utility`);
         }
     }
 };

@@ -47,7 +47,7 @@ const notlistening = new EmbedBuilder()
 const failedtoplay = new EmbedBuilder()
 .setColor(0x0099ff)
 .setTitle(`Beep Boop...`)
-.setDescription(`Failed to play the track, please try again.`)
+.setDescription(`Failed to play / add the track, please try again.`)
 .setImage('https://y.yarn.co/1a53594b-f992-4a06-abf1-7ecf744d72ee_text.gif')
 .setTimestamp()
 .setFooter({text: BOT_VERSION});
@@ -62,9 +62,8 @@ const notoncall = new EmbedBuilder()
 
 const left = new EmbedBuilder()
 .setColor(0x0099ff)
-.setTitle(`I got kicked out of the voice channel.`)
-.setDescription(`Why must you do this to me?`)
-.setImage('https://gifdb.com/images/high/asteroid-in-love-anime-mai-crying-9e0su1232jzo9y01.gif')
+.setTitle(`Bot Left the Voice Channel`)
+.setImage('https://media.tenor.com/W9qMbvdAI70AAAAM/veeunus-spongebob.gif')
 .setTimestamp()
 .setFooter({text: BOT_VERSION});
 module.exports = {active, bug , toomuch, maintenance, notlistening, failedtoplay,notoncall, left};

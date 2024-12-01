@@ -1,4 +1,6 @@
 const { EmbedBuilder, SlashCommandBuilder } = require('discord.js');
+const {bug} = require('../../handlers/embed.js');
+const config = require('../../handlers/config.json')
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -22,11 +24,13 @@ module.exports = {
                 { name: 'ID', value: user.id, inline: true },
                 { name: 'Account Creation Date', value: user.createdAt.toLocaleDateString('en-US', { timeZone: 'UTC' }), inline: true }
             )
+            .setFooter({text: `${config.BOT_NAME} \: ${config.BOT_VERSION}`})
             .setTimestamp();
             
             return interaction.reply({embeds: [embed]});
         }catch (error){
-            console.log(error);
+            await interaction.reply({embeds: [bug]});
+            global.reportError(error, `Introduction`, `Utility`);
         }
     },
 };

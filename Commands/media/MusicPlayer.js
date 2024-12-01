@@ -1,6 +1,6 @@
-const {Client, Collection, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle} = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags} = require('discord.js');
 const {bug, failedtoplay, notoncall, left} = require('../../handlers/embed.js');
-const { createAudioPlayer, createAudioResource, joinVoiceChannel, getVoiceConnection, AudioPlayerStatus, StreamType} = require('@discordjs/voice');
+const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, StreamType} = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
 const {BOT_VERSION} = require('../../handlers/config.json');
 
@@ -42,7 +42,6 @@ class MusicManager{
 
         //Get URL and add to queue
         const url = interaction.options.getString('url');
-        try{
             const Songinf = await ytdl.getInfo(url);
             const stream = ytdl(url, {
                 filter: 'audioonly',
@@ -69,16 +68,11 @@ class MusicManager{
             if (player.player.state.status !== AudioPlayerStatus.Playing) {
                 this.playNextInQueue(guildId);
                 await this.sendNowPlayingEmbed(interaction);
-            } else {
+            } else if (player.player.state.status === AudioPlayerStatus.Playing && player.queue.length > 0) {
                 await interaction.reply({
-                    content: `Added ${Songinf.videoDetails.title} to the queue`
-                });
+                    content: `Added \*\*\*${Songinf.videoDetails.title}*\*\* to the queue`
+                , flags: MessageFlags.Ephemeral});
             }
-
-        }catch(error){
-            console.error(error);
-            return interaction.reply({embeds: [bug]});
-        }
     }
 
     async sendNowPlayingEmbed(interaction) {
@@ -106,7 +100,7 @@ class MusicManager{
             const row = new ActionRowBuilder()
                 .addComponents(playbtn);
 
-            await interaction.channel.send({ embeds: [embed], components: [row] });
+            await interaction.reply({ embeds: [embed], components: [row] });
         }
     }
     //Checks the current player state plays the next one if not playing anything
@@ -156,11 +150,10 @@ class MusicManager{
         if (currentSong) {
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
-                .setTitle('Paused')
-                .setDescription(`[${currentSong.title}](${currentSong.url})`)
-                .addFields(
-                    { name: 'Requested By', value: currentSong.requestedBy }
-                )
+                .setTitle('Paused ⏸️')
+                .setDescription(`${currentSong.title}`)
+                .setImage(`https://media.tenor.com/WEtJpm07k9oAAAAM/music-stopped-silence.gif`)
+                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
@@ -183,11 +176,10 @@ class MusicManager{
         if (currentSong) {
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
-                .setTitle('Resumed')
-                .setDescription(`[${currentSong.title}](${currentSong.url})`)
-                .addFields(
-                    { name: 'Requested By', value: currentSong.requestedBy }
-                )
+                .setTitle('Resumed ▶️')
+                .setDescription(`${currentSong.title}`)
+                .setImage(`https://y.yarn.co/da965212-e1c4-46a1-a772-e9757d322bcb_text.gif`)
+                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
@@ -198,6 +190,7 @@ class MusicManager{
     async skip(interaction) {
         const guildId = interaction.guildId;
         const player = this.Player.get(guildId);
+        const currentSong = this.currentlyPlaying.get(guildId);
 
         if (!player || player.player.state.status !== AudioPlayerStatus.Playing) {
             return interaction.reply({ content: 'Nothing is playing' });
@@ -207,9 +200,11 @@ class MusicManager{
         this.playNextInQueue(guildId);
 
         // Send updated Now Playing embed
-        await this.sendNowPlayingEmbed(interaction);
-        
-        return interaction.reply({ content: 'Skipped to the next song' });
+        if (currentSong) {
+            await this.sendNowPlayingEmbed(interaction);
+        } else {
+            await interaction.reply({ content: 'Skipped. No more songs in the queue.' });
+        }
     }
 
     // Stop the player
@@ -220,17 +215,13 @@ class MusicManager{
         if (player) {
             player.player.stop();
             player.queue = [];
-            this.currentlyPlaying.delete(guildId);
-
-            if (player.connection) {
-                player.connection.destroy();
-                player.connection = null;
-            }
 
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
-                .setTitle('Stopped')
+                .setTitle('Stopped ⏹️')
                 .setDescription('Music playback has been stopped')
+                .setImage(`https://media.tenor.com/WEtJpm07k9oAAAAM/music-stopped-silence.gif`)
+                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
                 .setTimestamp();
 
             await interaction.reply({ embeds: [embed] });
@@ -249,7 +240,7 @@ class MusicManager{
                 `${index + 1}. ${song.title}`
             ).join('\n');
             
-            await interaction.reply(`Current Queue:\n${queueList}`);
+            await interaction.reply(`Current Queue 📃:\n${queueList}`);
         } else {
             await interaction.reply('The queue is empty.');
         }
@@ -270,13 +261,19 @@ class MusicManager{
                 player.connection = null;
             }
 
-            await interaction.reply({ content: 'Left the voice channel' });
+            await interaction.reply({ embeds: [left] });
         } else {
             await interaction.reply('Not in a voice channel.');
         }
     }
 }
 
+/*Im new to using "Singleton" so im gonna leave a note of what it does.
+
+Singleton is a design pattern that restricts the instantiation of a class to one object.
+This is useful when exactly one object is needed to coordinate actions across the system.
+The concept is sometimes generalized to systems that operate more efficiently when only 
+one object exists, or that restrict the instantiation to a certain number of objects.*/
 const musicManager = new MusicManager();
 
 module.exports = {
@@ -303,35 +300,40 @@ module.exports = {
         .setRequired(false)
     ),
 
-    async execute (interaction){
-        const action = interaction.options.getString('controls');
-        const url = interaction.options.getString('url');
+    execute: async (interaction) => {
+        try{
+            const action = interaction.options.getString('controls');
+            const url = interaction.options.getString('url');
 
-        switch(action){
-            case 'play':
-                if(!url){
-                    return interaction.reply({embeds: [failedtoplay]});
-                }
-                await musicManager.play(interaction);
-                break;
-            case 'pause':
-                await musicManager.pause(interaction);
-                break;
-            case 'resume':
-                await musicManager.resume(interaction);
-                break;
-            case 'skip':
-                await musicManager.skip(interaction);
-                break;
-            case 'stop':
-                await musicManager.stop(interaction);
-                break;
-            case 'queue': 
-                await musicManager.queue(interaction);
-                break;
-            case 'leave':
-                await musicManager.leave(interaction);
-                break;
+            switch(action){
+                case 'play':
+                    if(!url){
+                        return interaction.reply({embeds: [failedtoplay]});
+                    }
+                    await musicManager.play(interaction);
+                    break;
+                case 'pause':
+                    await musicManager.pause(interaction);
+                    break;
+                case 'resume':
+                    await musicManager.resume(interaction);
+                    break;
+                case 'skip':
+                    await musicManager.skip(interaction);
+                    break;
+                case 'stop':
+                    await musicManager.stop(interaction);
+                    break;
+                case 'queue': 
+                    await musicManager.queue(interaction);
+                    break;
+                case 'leave':
+                    await musicManager.leave(interaction);
+                    break;
+            }
+        }catch(error){
+            await interaction.reply({embeds: [bug]});
+            global.reportError(error, 'Play-Music', 'Media');
         }
     }
 }

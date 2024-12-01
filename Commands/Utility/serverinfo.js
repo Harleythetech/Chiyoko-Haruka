@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder} = require('discord.js');
 const config = require('../../handlers/config.json')
+const {bug} = require('../../handlers/embed.js');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -21,7 +22,8 @@ module.exports = {
 
 		await interaction.reply({embeds: [server]});
 		}catch(error){
-			console.error(error);
+			await interaction.reply({embeds: [bug]});
+            global.reportError(error, `Introduction`, `Utility`);
 		}
 	},
 };

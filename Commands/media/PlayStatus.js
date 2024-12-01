@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { toomuch, notlistening } = require('../../handlers/embed.js');
+const {notlistening, bug } = require('../../handlers/embed.js');
 
 class PlayStatus {
     constructor(interaction) {
@@ -10,7 +10,7 @@ class PlayStatus {
     }
 
     async convertTime(duration) {
-        const { default: convert } = require('parse-ms');
+        const { default: convert } = await import('parse-ms');
         const timeConvert = convert(duration);
         const minutes = timeConvert.minutes < 10 ? `0${timeConvert.minutes}` : timeConvert.minutes;
         const seconds = timeConvert.seconds < 10 ? `0${timeConvert.seconds}` : timeConvert.seconds;
@@ -72,23 +72,19 @@ class PlayStatus {
             return this.interaction.reply({ embeds: [notlistening] });
         }
 
-        try {
-            if (this.media.name === 'Spotify') {
-                const { embed, row } = await this.buildSpotifyEmbed();
-                return this.interaction.reply({
-                    embeds: [embed],
-                    components: [row],
-                });
-            } else if (this.media.name === 'Apple Music') {
-                const { embed } = await this.buildAppleMusicEmbed();
-                return this.interaction.reply({ embeds: [embed] });
-            } else {
-                return this.interaction.reply({ embeds: [notlistening] });
-            }
-        } catch (error) {
-            console.error(`[ERROR - PLAYSTATUS] ${error}`);
-            return this.interaction.reply({ embeds: [toomuch] });
+        if (this.media.name === 'Spotify') {
+            const { embed, row } = await this.buildSpotifyEmbed();
+            return this.interaction.reply({
+                embeds: [embed],
+                components: [row],
+            });
+        } else if (this.media.name === 'Apple Music') {
+            const { embed } = await this.buildAppleMusicEmbed();
+            return this.interaction.reply({ embeds: [embed] });
+        } else {
+            return this.interaction.reply({ embeds: [notlistening] });
         }
+
     }
 }
 
@@ -101,8 +97,13 @@ module.exports = {
                 .setDescription('Check what the user is listening to')
                 .setRequired(false)
         ),
-    async execute(interaction) {
-        const playStatus = new PlayStatus(interaction);
-        await playStatus.execute();
-    }
+    execute: async(interaction) => {
+        try{
+            const playStatus = new PlayStatus(interaction);
+            await playStatus.execute();
+        }catch(error){
+            await interaction.reply({ embeds: [bug] });
+            global.reportError(error, 'PlayStatus', 'Media');
+        }
+    },
 };
