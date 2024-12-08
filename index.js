@@ -261,6 +261,11 @@ global.reportError = (error, context = 'General', module = 'Unknown') => {
     customLogger.error(ecode);
 };
 
+global.reportLog = (log, context = 'General', module = 'Unknown') => {
+    const lcode = `[${module.toUpperCase()}] [${new Date().toLocaleString()}] ${context.toUpperCase()} | ${log}`;
+    customLogger.log(lcode);
+};
+
 // Error on Unhandled Rejection
 process.on('unhandledRejection', error => {
     customLogger.error(`[ERROR - UNHANDLED REJECTION] ${error}`);

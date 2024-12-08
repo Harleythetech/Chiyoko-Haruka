@@ -9,11 +9,10 @@ class MusicManager{
         this.Player = new Map();
         this.currentlyPlaying = new Map();
     }
-
+    
     async play (interaction){
         const guildId = interaction.guildId;
         const voicech = interaction.member.voice.channel;
-
         //Server Specific Player
         if(!this.Player.has(guildId)){
             this.Player.set(guildId, {
@@ -63,12 +62,11 @@ class MusicManager{
                 url: url,
                 requestedBy: interaction.user.username
             });
-
             //if nothing is currently playing start playing
             if (player.player.state.status !== AudioPlayerStatus.Playing) {
                 this.playNextInQueue(guildId);
                 await this.sendNowPlayingEmbed(interaction);
-            } else if (player.player.state.status === AudioPlayerStatus.Playing && player.queue.length > 0) {
+            } else if (player.player.state.status === AudioPlayerStatus.Playing) {
                 await interaction.reply({
                     content: `Added \*\*\*${Songinf.videoDetails.title}*\*\* to the queue`
                 , flags: MessageFlags.Ephemeral});
@@ -79,29 +77,28 @@ class MusicManager{
         const guildId = interaction.guildId;
         const currentSong = this.currentlyPlaying.get(guildId);
 
-        if (currentSong) {
-            const Duration = Math.floor(currentSong.duration / 60) + ':' + (currentSong.duration % 60);
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setAuthor({name: "Now Playing", iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png"})
-                .setImage(`https://img.youtube.com/vi/${currentSong.image}/maxresdefault.jpg`)
-                .addFields(
-                   {name: 'Title', value: `\`\`\`${currentSong.title}\n\`\`\``},
-                   {name: 'Duration', value: `\`\`\`${Duration}\n\`\`\``, inline:true },
-                   {name: 'Channel / Artist', value: `\`\`\`${currentSong.Channel}\n\`\`\``, inline: true}
-                )
-                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
-                .setTimestamp();
+        const Duration = Math.floor(currentSong.duration / 60) + ':' + (currentSong.duration % 60);
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setAuthor({name: "Now Playing", iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png"})
+            .setImage(`https://img.youtube.com/vi/${currentSong.image}/maxresdefault.jpg`)
+            .addFields(
+                {name: 'Title', value: `\`\`\`${currentSong.title}\n\`\`\``},
+                {name: 'Duration', value: `\`\`\`${Duration}\n\`\`\``, inline:true },
+                {name: 'Channel / Artist', value: `\`\`\`${currentSong.Channel}\n\`\`\``, inline: true}
+            )
+            .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
+            .setTimestamp();
 
-            const playbtn = new ButtonBuilder()
-                .setLabel('Play in Youtube')
-                .setStyle(ButtonStyle.Link)
-                .setURL(currentSong.url);
-            const row = new ActionRowBuilder()
-                .addComponents(playbtn);
+        const playbtn = new ButtonBuilder()
+            .setLabel('Play in Youtube')
+            .setStyle(ButtonStyle.Link)
+            .setURL(currentSong.url);
+        const row = new ActionRowBuilder()
+            .addComponents(playbtn);
 
-            await interaction.reply({ embeds: [embed], components: [row] });
-        }
+        await interaction.reply({ embeds: [embed], components: [row] });
+
     }
     //Checks the current player state plays the next one if not playing anything
     playNextInQueue(guildId) {
@@ -109,11 +106,24 @@ class MusicManager{
 
         if (!player || player.queue.length === 0) {
             // Clear currently playing when queue is empty
+            if(player.currentResource){
+                player.currentResource.audioPlayer = null;
+                player.currentResource.encoder?.destroy();
+                player.currentResource = null;
+            }
             this.currentlyPlaying.delete(guildId);
             return;
         }
 
         const nextSong = player.queue.shift();
+
+        if(player.currentResource){
+            player.currentResource.audioPlayer = null;
+            player.currentResource.encoder?.destroy();
+            player.currentResource = null;
+        }
+
+        player.currentResource = nextSong.resource;
         player.player.play(nextSong.resource);
 
         // Update currently playing for this guild
@@ -125,7 +135,7 @@ class MusicManager{
             Channel: nextSong.Channel,
             requestedBy: nextSong.requestedBy
         });
-
+        player.player.removeAllListeners('stateChange');
         // Listen for when the song ends
         player.player.on('stateChange', (oldstate, newstate) => {
             if (newstate.status === AudioPlayerStatus.Idle) {
