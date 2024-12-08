@@ -10,128 +10,78 @@ require('dotenv').config();
 const sdp = require("stop-discord-phishing");
 
 // New dependencies for monitoring
-const blessed = require('blessed');
-const contrib = require('blessed-contrib');
 const pidusage = require('pidusage');
 const colors = require('ansi-colors');
+const express = require('express');
+const http = require('http');
+const {Server} = require('socket.io');
+const stripAnsi = require('strip-ansi');
 
-// Create blessed screen
-const screen = blessed.screen({
-    smartCSR: true,
-    title: 'Chiyoko Haruka Bot Monitor'
+// Initiate WEBGUI
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+// Setup EJS Render
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'WEBGUI/views'));
+app.use(express.static(path.join(__dirname, 'WEBGUI/public')));
+
+// Serve Dashboard
+app.get('/', (req, res) => {
+    res.render('index');
 });
 
-// Title Box
-const titleBox = blessed.box({
-    top: 1,
-    left: 0,
-    width: '100%',
-    height: 3,
-    content: 'Chiyoko Haruka V5.0 - Catalyst',
-    align: 'center',
-    valign: 'middle',
-    style: {
-        fg: 'white',
-        bg: 'blue',
-        bold: true
-    }
-});
-screen.append(titleBox);
-
-// Create layout
-const grid = new contrib.grid({rows: 12, cols: 12, screen: screen, top: 3});
-
-// Heartbeat Line Graph
-const heartbeatGraph = grid.set(0, 0, 4, 6, contrib.line, {
-    style: { 
-        line: "yellow",
-        text: "green",
-        baseline: "black"
-    },
-    label: 'Heartbeat (ms)',
-    maxY: 500,
-    showLegend: true
+// Start Server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`[WEBGUI - SERVER] Server is running on http://localhost:${PORT}`);
 });
 
-// Resource Usage Box
-const resourceBox = grid.set(0, 6, 4, 6, blessed.box, {
-    label: 'Resource Usage',
-    border: 'line',
-    style: {
-        fg: 'white'
-    }
-});
+// Websocket Connection
+io.on('connection', (socket) => {
+    customLogger.log(`[WEBGUI - SOCKET] New connection from ID: [${socket.id}]`);
 
-// Function to create progress bar
-function createProgressBar(percent) {
-    // Ensure percent is a number
-    const numPercent = Number(percent);
-    
-    // Check if the conversion resulted in a valid number
-    if (isNaN(numPercent)) {
-        return 'Invalid Percentage | 0%';
-    }
-    
-    // Clamp the percentage between 0 and 100
-    const clampedPercent = Math.min(Math.max(numPercent, 0), 100);
-    
-    const barLength = 40;
-    const filledLength = Math.round((clampedPercent / 100) * barLength);
-    const emptyLength = barLength - filledLength;
-    
-    const filledBar = '█'.repeat(filledLength);
-    const emptyBar = '░'.repeat(emptyLength);
-    
-    return `${filledBar}${emptyBar} | ${clampedPercent.toFixed(1)}%`;
-}
+    socket.on('disconnect', () => {
+        customLogger.warn(`[WEBGUI - SOCKET] Disconnected from ID: [${socket.id}]`);
+    });
+})
 
-// Logs Box
-const logBox = grid.set(4, 0, 8, 12, blessed.log, {
-    label: 'Logs',
-    border: 'line',
-    scrollable: true,
-    alwaysScroll: true,
-    scrollback: 100,
-    style: {
-        fg: 'white',
-        border: {
-            fg: '#f0f0f0'
-        }
-    }
-});
-
-// Heartbeat Tracking
-const heartbeatData = {
-    title: `Ping  `,
-    x: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
-    y: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-};
 
 // Custom logger to capture logs
 const customLogger = {
     log: (message) => {
-        logBox.log(colors.green(`${message}`));
+        const cleanMessage = stripAnsi(message);
+        io.emit('log', `[LOG] ${cleanMessage}`);
     },
     warn: (message) => {
-        logBox.log(colors.yellow(`[WARN] ${message}`));
+        const cleanMessage = stripAnsi(message);
+        io.emit('log', `[WARN] ${cleanMessage}`);
     },
     error: (message) => {
-        logBox.log(colors.red(`[ERROR] ${message}`));
+        console.error((`[ERROR] ${message}`));
+        const cleanMessage = stripAnsi(message);
+        io.emit('log', `[ERROR] ${cleanMessage}`);
     }
 };
+// Convert ms to HH:MM:SS
+function formatRuntime(milliseconds) {
+    const totalSeconds = Math.floor(milliseconds / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    // Format as HH:MM:SS
+    return [hours, minutes, seconds]
+        .map(unit => String(unit).padStart(2, '0')) // Ensure two-digit formatting
+        .join(':');
+}
 
 // Heartbeat Function
 function heartbeat(){
     setInterval(()=>{
         const ping = client.ws.ping;
-        
-        // Shift data points
-        heartbeatData.y.shift();
-        heartbeatData.y.push(ping);
-        heartbeatData.title = `Ping ${ping}ms`;
-        // Update graph
-        heartbeatGraph.setData([heartbeatData]);
-        screen.render();
+        io.emit('heartbeat', ping);
     }, 3000);
 }
 
@@ -140,28 +90,18 @@ function monitorResources() {
     setInterval(() => {
         pidusage(process.pid, (err, stats) => {
             if (err) {
-                resourceBox.setContent('Failed to get resource usage');
                 return;
             }
 
             // Convert memory to percentage (assuming 16GB max RAM as example)
             const cpuPercent = stats.cpu.toFixed(1);
             const memoryPercent = Math.min((stats.memory / (1 * 1024 * 1024 * 1024)) * 100, 100).toFixed(1);
-
-            const content = [
-                `CPU: ${createProgressBar(cpuPercent)}`,
-                `RAM: ${createProgressBar(memoryPercent)}`,
-                `PID: ${stats.pid}`,
-                `Runtime: ${Math.floor(stats.elapsed / 1000)} seconds`
-            ].join('\n');
-
-            resourceBox.setContent(content);
-            screen.render();
+            const ProcD = [cpuPercent, memoryPercent, formatRuntime(stats.elapsed)];
+            io.emit('ResourceUsage', ProcD);
         });
     }, 100);
 }
 
-screen.render();
 
 // Bot Command Handler
 client.commands = new Collection();
@@ -262,7 +202,7 @@ global.reportError = (error, context = 'General', module = 'Unknown') => {
 };
 
 global.reportLog = (log, context = 'General', module = 'Unknown') => {
-    const lcode = `[${module.toUpperCase()}] [${new Date().toLocaleString()}] ${context.toUpperCase()} | ${log}`;
+    const lcode = `[${module.toUpperCase()} | ${new Date().toLocaleString()}] | ${context.toUpperCase()} | ${log}`;
     customLogger.log(lcode);
 };
 
@@ -278,3 +218,5 @@ process.on('uncaughtException', error => {
 
 //Bot Login
 client.login(process.env.token);
+
+console.log('   _____ _     _             _           _    _                  _         \r\n  \/ ____| |   (_)           | |         | |  | |                | |        \r\n | |    | |__  _ _   _  ___ | | _____   | |__| | __ _ _ __ _   _| | ____ _ \r\n | |    | \'_ \\| | | | |\/ _ \\| |\/ \/ _ \\  |  __  |\/ _` | \'__| | | | |\/ \/ _` |\r\n | |____| | | | | |_| | (_) |   < (_) | | |  | | (_| | |  | |_| |   < (_| |\r\n  \\_____|_| |_|_|\\__, |\\___\/|_|\\_\\___\/  |_|  |_|\\__,_|_|   \\__,_|_|\\_\\__,_|\r\n                  __\/ |                                                    \r\n                 |___\/                                                     ');
