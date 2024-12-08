@@ -11,11 +11,9 @@ const sdp = require("stop-discord-phishing");
 
 // New dependencies for monitoring
 const pidusage = require('pidusage');
-const colors = require('ansi-colors');
 const express = require('express');
 const http = require('http');
 const {Server} = require('socket.io');
-const stripAnsi = require('strip-ansi');
 
 // Initiate WEBGUI
 const app = express();
@@ -51,12 +49,10 @@ io.on('connection', (socket) => {
 // Custom logger to capture logs
 const customLogger = {
     log: (message) => {
-        const cleanMessage = stripAnsi(message);
-        io.emit('log', `[LOG] ${cleanMessage}`);
+        io.emit('log', `[LOG] ${message}`);
     },
     warn: (message) => {
-        const cleanMessage = stripAnsi(message);
-        io.emit('log', `[WARN] ${cleanMessage}`);
+        io.emit('log', `[WARN] ${message}`);
     },
     error: (message) => {
         console.error((`[ERROR] ${message}`));
@@ -124,7 +120,7 @@ for (const folder of commandFolders){
 
 // Client Once Ready
 client.on(Events.ClientReady, c => {
-    customLogger.log(`[READY - CLIENT] ${c.user.tag} is now online!`);
+    console.log(`[READY - CLIENT] ${c.user.tag} is now online!`);
     client.user.setActivity(client.guilds.cache.size + ' Servers', {type: ActivityType.Listening}); //Sets the bot's activity to listening to the number of servers it is in
 
     // Sends ON Signal to Log Channel when the bot is ready
@@ -171,7 +167,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
     try {
         // Log command usage
-        customLogger.log(`${colors.yellow(`[COMMAND - ${new Date().toLocaleString()}]`)} ${interaction.commandName} | Server: ${interaction.guild.name}`);
+        customLogger.log(`[COMMAND - ${new Date().toLocaleString()}])} ${interaction.commandName} | Server: ${interaction.guild.name}`);
         
         await command.execute(interaction);
     } catch(error) {
