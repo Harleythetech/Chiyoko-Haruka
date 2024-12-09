@@ -69,7 +69,7 @@ socket.on('guildsize', (data) => {
 
 // User Count
 socket.on('usercount', (data) => {
-    document.getElementById('userCount').innerText = `Users: ${data}`;
+    document.getElementById('usersCount').innerText = `Users: ${data}`;
 });
 
 // Status
