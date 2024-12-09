@@ -8,6 +8,7 @@ const commandFolders = fs.readdirSync(folderPath);
 const {active, bug} = require('./handlers/embed.js');
 require('dotenv').config();
 const sdp = require("stop-discord-phishing");
+const config = require('./handlers/config.json')
 
 // New dependencies for monitoring
 const pidusage = require('pidusage');
@@ -38,11 +39,8 @@ server.listen(PORT, () => {
 
 // Websocket Connection
 io.on('connection', (socket) => {
-    customLogger.log(`[WEBGUI - SOCKET] New connection from ID: [${socket.id}]`);
-
-    socket.on('disconnect', () => {
-        customLogger.warn(`[WEBGUI - SOCKET] Disconnected from ID: [${socket.id}]`);
-    });
+    io.emit('version', config.BOT_VERSION);
+    io.emit('clientid', socket.id);
 })
 
 
@@ -56,10 +54,11 @@ const customLogger = {
     },
     error: (message) => {
         console.error((`[ERROR] ${message}`));
-        const cleanMessage = stripAnsi(message);
-        io.emit('log', `[ERROR] ${cleanMessage}`);
+        io.emit('log', `[ERROR] ${message}`);
     }
 };
+
+
 // Convert ms to HH:MM:SS
 function formatRuntime(milliseconds) {
     const totalSeconds = Math.floor(milliseconds / 1000);
@@ -77,6 +76,9 @@ function formatRuntime(milliseconds) {
 function heartbeat(){
     setInterval(()=>{
         const ping = client.ws.ping;
+        io.emit('status', client.ws.status);
+        io.emit('guildsize', client.guilds.cache.size);
+        io.emit('usercount', client.users.cache.size);
         io.emit('heartbeat', ping);
     }, 3000);
 }
@@ -122,11 +124,9 @@ for (const folder of commandFolders){
 client.on(Events.ClientReady, c => {
     console.log(`[READY - CLIENT] ${c.user.tag} is now online!`);
     client.user.setActivity(client.guilds.cache.size + ' Servers', {type: ActivityType.Listening}); //Sets the bot's activity to listening to the number of servers it is in
-
     // Sends ON Signal to Log Channel when the bot is ready
     const logch = client.channels.cache.get(process.env.CHANNEL_ID);
     logch.send({embeds: [active]});
-
     // Start monitoring
     heartbeat();
     monitorResources();

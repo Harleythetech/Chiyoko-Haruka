@@ -57,6 +57,39 @@ socket.on('ResourceUsage', (data) => {
     document.getElementById('memory').innerText = `${data[1]}%`;
 });
 
+// Server Version 
+socket.on('version', (data) => {
+    document.getElementById('ver_webgui').innerText = data;
+});
+
+// Guild Size
+socket.on('guildsize', (data) => {
+    document.getElementById('guildSize').innerText = `Guilds: ${data}`;
+});
+
+// User Count
+socket.on('usercount', (data) => {
+    document.getElementById('userCount').innerText = `Users: ${data}`;
+});
+
+// Status
+socket.on('status', (data) => {
+    if(data === 0){
+        const statusElement = document.getElementById('status');
+        statusElement.innerText = 'Online';
+        statusElement.classList.add('text-success');
+        statusElement.classList.remove('text-danger');
+    }else{
+        const statusElement = document.getElementById('status');
+        statusElement.innerText = 'Offline';
+        statusElement.classList.add('text-danger');
+        statusElement.classList.remove('text-success');
+    }
+});
+
+socket.on('clientid', (data) => {
+    document.getElementById('session_ID').innerText = data;
+});
 // Logs
 const logBox = document.getElementById('logBox');
 socket.on('log', (message) => {
