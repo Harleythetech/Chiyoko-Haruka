@@ -68,7 +68,7 @@ class MusicManager{
                 this.playNextInQueue(guildId);
                 await this.sendNowPlayingEmbed(interaction);
             } else if (player.player.state.status === AudioPlayerStatus.Playing) {
-                await interaction.reply({
+                await interaction.editReply({
                     content: `Added \*\*\*${Songinf.videoDetails.title}*\*\* to the queue`
                 , flags: MessageFlags.Ephemeral});
             }
