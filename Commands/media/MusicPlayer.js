@@ -11,6 +11,7 @@ class MusicManager{
     }
     
     async play (interaction){
+        await interaction.deferReply();
         const guildId = interaction.guildId;
         const voicech = interaction.member.voice.channel;
         //Server Specific Player
@@ -76,12 +77,11 @@ class MusicManager{
     async sendNowPlayingEmbed(interaction) {
         const guildId = interaction.guildId;
         const currentSong = this.currentlyPlaying.get(guildId);
-
         const Duration = Math.floor(currentSong.duration / 60) + ':' + (currentSong.duration % 60);
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setAuthor({name: "Now Playing", iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png"})
-            .setImage(`https://img.youtube.com/vi/${currentSong.image}/maxresdefault.jpg`)
+            .setImage(`https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`)
             .addFields(
                 {name: 'Title', value: `\`\`\`${currentSong.title}\n\`\`\``},
                 {name: 'Duration', value: `\`\`\`${Duration}\n\`\`\``, inline:true },
@@ -97,9 +97,8 @@ class MusicManager{
         const row = new ActionRowBuilder()
             .addComponents(playbtn);
 
-        await interaction.reply({ embeds: [embed], components: [row] });
-
-    }
+        await interaction.editReply({ embeds: [embed], components: [row] });
+}
     //Checks the current player state plays the next one if not playing anything
     playNextInQueue(guildId) {
         const player = this.Player.get(guildId);
@@ -211,6 +210,7 @@ class MusicManager{
 
         // Send updated Now Playing embed
         if (currentSong) {
+            await interaction.deferReply();
             await this.sendNowPlayingEmbed(interaction);
         } else {
             await interaction.reply({ content: 'Skipped. No more songs in the queue.' });
