@@ -15,8 +15,9 @@ module.exports = {
         .setImage('https://media2.giphy.com/media/ECwTCTrHPVqKI/giphy.gif?cid=ecf05e47pyut03gtv3uo3ok10nosqd106gdwct60ptftxw51&rid=giphy.gif&ct=g')
         .setTimestamp()
         .setFooter({text: config.BOT_NAME + ':' + config.BOT_VERSION});
-        console.log(`Latency: ${Date.now() - interaction.createdTimestamp}ms\nAPI Latency: ${Math.round(interaction.client.ws.ping)}ms`);
+        const data = (`Latency: ${Date.now() - interaction.createdTimestamp}ms\nAPI Latency: ${Math.round(interaction.client.ws.ping)}ms`);
                 return interaction.reply({embeds: [ping]});
+        global.reportLog(data, `Ping`, `Utility`);
         }catch(error){
           await interaction.reply({embeds: [bug]});
           global.reportError(error, `Ping`, `Utility`);
