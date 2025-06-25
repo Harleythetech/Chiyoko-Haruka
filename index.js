@@ -16,6 +16,23 @@ const express = require('express');
 const http = require('http');
 const {Server} = require('socket.io');
 
+// Import music manager
+let musicManager = null;
+
+// Function to get music manager instance
+function getMusicManager() {
+    if (!musicManager) {
+        try {
+            const musicPlayerModule = require('./Commands/media/MusicPlayer.js');
+            // Access the singleton instance from the module
+            musicManager = require('./Commands/media/MusicPlayer.js');
+        } catch (error) {
+            console.log('[WEBGUI] Music manager not available');
+        }
+    }
+    return musicManager;
+}
+
 // Initiate WEBGUI
 const app = express();
 const server = http.createServer(app);
@@ -100,6 +117,110 @@ function monitorResources() {
     }, 100);
 }
 
+// Music Monitoring
+function monitorMusic() {
+    setInterval(() => {
+        try {
+            // Access music manager from the loaded command
+            const musicCommand = client.commands.get('play-music');
+            if (musicCommand && musicCommand.musicManager) {
+                const musicData = musicCommand.musicManager.getWebDashboardData();
+                
+                // Enhance the data with Discord server information
+                if (musicData.currentSongs.length > 0) {
+                    musicData.currentSongs = musicData.currentSongs.map(song => {
+                        const guild = client.guilds.cache.get(song.guildId);
+                        return {
+                            ...song,
+                            serverName: guild?.name || 'Unknown Server',
+                            serverIcon: guild?.iconURL() || null
+                        };
+                    });
+                }
+                
+                io.emit('musicUpdate', musicData);
+            } else {
+                // Send empty music data if no music manager is available
+                io.emit('musicUpdate', {
+                    hasActiveMusic: false,
+                    activePlayersCount: 0,
+                    currentSongs: [],
+                    totalServersWithPlayers: 0
+                });
+            }
+        } catch (error) {
+            // Send empty music data on error
+            io.emit('musicUpdate', {
+                hasActiveMusic: false,
+                activePlayersCount: 0,
+                currentSongs: [],
+                totalServersWithPlayers: 0
+            });
+        }
+    }, 2000);
+}
+
+// Get current music data from all servers (fallback method)
+function getMusicData() {
+    const musicData = {
+        hasActiveMusic: false,
+        activePlayersCount: 0,
+        currentSong: null,
+        servers: []
+    };
+
+    try {
+        // Get all voice connections
+        const { getVoiceConnections } = require('@discordjs/voice');
+        const connections = getVoiceConnections();
+        
+        let activeCount = 0;
+        let currentMusic = null;
+
+        // Iterate through connections to find active music
+        for (const [guildId, connection] of connections) {
+            const guild = client.guilds.cache.get(guildId);
+            if (guild && connection) {
+                activeCount++;
+                
+                // Try to get current music info - this would need to be exposed from MusicManager
+                // For now, we'll create a mock structure that can be populated
+                const mockCurrentSong = {
+                    title: "Sample Song Title",
+                    artist: "Sample Artist",
+                    duration: "3:45",
+                    thumbnail: "https://i3.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+                    url: "https://youtube.com/watch?v=dQw4w9WgXcQ",
+                    requestedBy: "SampleUser",
+                    serverName: guild.name,
+                    queueCount: 3,
+                    voiceUsers: connection.joinConfig.channelId ? 
+                        guild.channels.cache.get(connection.joinConfig.channelId)?.members.size || 0 : 0
+                };
+                
+                if (!currentMusic) {
+                    currentMusic = mockCurrentSong;
+                }
+                
+                musicData.servers.push({
+                    guildId: guildId,
+                    serverName: guild.name,
+                    hasMusic: true
+                });
+            }
+        }
+
+        musicData.activePlayersCount = activeCount;
+        musicData.hasActiveMusic = activeCount > 0;
+        musicData.currentSong = currentMusic;
+
+    } catch (error) {
+        // Handle errors silently
+    }
+
+    return musicData;
+}
+
 
 // Bot Command Handler
 client.commands = new Collection();
@@ -130,6 +251,7 @@ client.on(Events.ClientReady, c => {
     // Start monitoring
     heartbeat();
     monitorResources();
+    monitorMusic();
 });
 
 // Message With Link detection and Scam Detection powered by Stop Discord Phishing

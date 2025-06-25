@@ -10,6 +10,56 @@ class MusicManager{
         this.currentlyPlaying = new Map();
     }
     
+    // Method to get all currently playing music across servers
+    getAllCurrentlyPlaying() {
+        const result = [];
+        for (const [guildId, songData] of this.currentlyPlaying) {
+            result.push({
+                guildId,
+                ...songData
+            });
+        }
+        return result;
+    }
+    
+    // Method to get music data for web dashboard
+    getWebDashboardData() {
+        const playingMusic = this.getAllCurrentlyPlaying();
+        const activePlayerCount = this.Player.size;
+        
+        // Enhance with queue information and progress
+        const enhancedSongs = playingMusic.map(song => {
+            const player = this.Player.get(song.guildId);
+            const currentTime = Date.now();
+            let elapsedSeconds = 0;
+            
+            if (song.startTime) {
+                if (song.isPaused && song.pausedAt) {
+                    // If paused, calculate elapsed time up to pause
+                    elapsedSeconds = Math.floor((song.pausedAt - song.startTime) / 1000);
+                } else {
+                    // If playing, calculate current elapsed time
+                    elapsedSeconds = Math.floor((currentTime - song.startTime) / 1000);
+                }
+            }
+            
+            return {
+                ...song,
+                queueLength: player ? player.queue.length : 0,
+                playerStatus: player ? player.player.state.status : 'idle',
+                elapsedSeconds: Math.max(0, elapsedSeconds),
+                progressPercent: song.duration > 0 ? Math.min((elapsedSeconds / song.duration) * 100, 100) : 0
+            };
+        });
+        
+        return {
+            hasActiveMusic: playingMusic.length > 0,
+            activePlayersCount: activePlayerCount,
+            currentSongs: enhancedSongs,
+            totalServersWithPlayers: activePlayerCount
+        };
+    }
+    
     async play (interaction){
         await interaction.deferReply();
         const guildId = interaction.guildId;
@@ -125,14 +175,18 @@ class MusicManager{
         player.currentResource = nextSong.resource;
         player.player.play(nextSong.resource);
 
-        // Update currently playing for this guild
+        // Update currently playing for this guild with start time
+        const startTime = Date.now();
         this.currentlyPlaying.set(guildId, {
             title: nextSong.title,
             url: nextSong.url,
             image: nextSong.image,
             duration: nextSong.duration,
             Channel: nextSong.Channel,
-            requestedBy: nextSong.requestedBy
+            requestedBy: nextSong.requestedBy,
+            startTime: startTime,
+            isPaused: false,
+            pausedAt: null
         });
         player.player.removeAllListeners('stateChange');
         // Listen for when the song ends
@@ -155,8 +209,13 @@ class MusicManager{
 
         player.player.pause();
         
+        // Update pause state
         const currentSong = this.currentlyPlaying.get(guildId);
         if (currentSong) {
+            currentSong.isPaused = true;
+            currentSong.pausedAt = Date.now();
+            this.currentlyPlaying.set(guildId, currentSong);
+            
             const embed = new EmbedBuilder()
                 .setColor('#FF0000')
                 .setTitle('Paused ⏸️')
@@ -181,8 +240,15 @@ class MusicManager{
 
         player.player.unpause();
         
+        // Update resume state and adjust start time
         const currentSong = this.currentlyPlaying.get(guildId);
-        if (currentSong) {
+        if (currentSong && currentSong.isPaused) {
+            const pauseDuration = Date.now() - currentSong.pausedAt;
+            currentSong.startTime += pauseDuration; // Adjust start time by pause duration
+            currentSong.isPaused = false;
+            currentSong.pausedAt = null;
+            this.currentlyPlaying.set(guildId, currentSong);
+            
             const embed = new EmbedBuilder()
                 .setColor('#00FF00')
                 .setTitle('Resumed ▶️')
@@ -345,5 +411,8 @@ module.exports = {
             await interaction.reply({embeds: [bug]});
             global.reportError(error, 'Play-Music', 'Media');
         }
-    }
+    },
+    
+    // Export the music manager instance for web dashboard access
+    musicManager: musicManager
 }

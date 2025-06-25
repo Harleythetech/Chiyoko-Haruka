@@ -97,8 +97,9 @@ socket.on('heartbeat', (data) => {
 socket.on('ResourceUsage', (data) => {
     // Update runtime with animation (prevent excessive animations)
     const runtimeElement = document.getElementById('runtime');
-    if (runtimeElement.textContent !== data[2]) {
-        runtimeElement.textContent = data[2];
+    const newRuntime = data[2];
+    if (runtimeElement.textContent !== newRuntime) {
+        runtimeElement.textContent = newRuntime;
         runtimeElement.classList.add('count-up');
         setTimeout(() => runtimeElement.classList.remove('count-up'), 300);
     }
@@ -106,18 +107,24 @@ socket.on('ResourceUsage', (data) => {
     // Update CPU usage (prevent unnecessary updates)
     const cpuBar = document.getElementById('cpu');
     const cpuPercent = document.getElementById('cpuPercent');
-    if (cpuBar.style.width !== `${data[0]}%`) {
-        cpuBar.style.width = `${data[0]}%`;
-        cpuPercent.textContent = `${data[0]}%`;
+    const newCpuWidth = `${data[0]}%`;
+    const newCpuText = `${data[0]}%`;
+    
+    if (cpuBar.style.width !== newCpuWidth) {
+        cpuBar.style.width = newCpuWidth;
+        cpuPercent.textContent = newCpuText;
         cpuPercent.className = data[0] < 70 ? 'badge bg-success' : data[0] < 90 ? 'badge bg-warning text-dark' : 'badge bg-danger';
     }
     
     // Update Memory usage (prevent unnecessary updates)
     const memoryBar = document.getElementById('memory');
     const memoryPercent = document.getElementById('memoryPercent');
-    if (memoryBar.style.width !== `${data[1]}%`) {
-        memoryBar.style.width = `${data[1]}%`;
-        memoryPercent.textContent = `${data[1]}%`;
+    const newMemoryWidth = `${data[1]}%`;
+    const newMemoryText = `${data[1]}%`;
+    
+    if (memoryBar.style.width !== newMemoryWidth) {
+        memoryBar.style.width = newMemoryWidth;
+        memoryPercent.textContent = newMemoryText;
         memoryPercent.className = data[1] < 70 ? 'badge bg-success' : data[1] < 90 ? 'badge bg-warning text-dark' : 'badge bg-danger';
     }
 });
@@ -183,6 +190,149 @@ socket.on('log', (message) => {
     logBox.value += `[${timestamp}] ${message}\n`;
     logBox.scrollTop = logBox.scrollHeight;
 });
+
+// Music update handler
+socket.on('musicUpdate', (musicData) => {
+    updateMusicPlayer(musicData);
+});
+
+// Store progress interval for cleanup
+let progressInterval = null;
+
+// Update music player display
+function updateMusicPlayer(musicData) {
+    const noMusicState = document.getElementById('noMusicState');
+    const musicPlayingState = document.getElementById('musicPlayingState');
+    const activePlayersCount = document.getElementById('activePlayersCount');
+    
+    // Update active players count only if changed
+    const newPlayerCountText = `${musicData.activePlayersCount} Active Players`;
+    if (activePlayersCount.textContent !== newPlayerCountText) {
+        activePlayersCount.textContent = newPlayerCountText;
+    }
+    
+    if (musicData.hasActiveMusic && musicData.currentSongs.length > 0) {
+        // Show music playing state
+        const wasHidden = musicPlayingState.classList.contains('d-none');
+        noMusicState.classList.add('d-none');
+        musicPlayingState.classList.remove('d-none');
+        
+        // Get the first current song (you could cycle through multiple)
+        const currentSong = musicData.currentSongs[0];
+        
+        // Update song information only if changed
+        const musicTitle = document.getElementById('musicTitle');
+        const musicArtist = document.getElementById('musicArtist');
+        const musicServer = document.getElementById('musicServer');
+        const musicRequestedBy = document.getElementById('musicRequestedBy');
+        
+        const newTitle = currentSong.title || 'Unknown Title';
+        const newArtist = currentSong.Channel || 'Unknown Artist';
+        const newServer = currentSong.serverName || 'Unknown Server';
+        const newRequestedBy = currentSong.requestedBy || 'Unknown User';
+        
+        // Check if this is a new song
+        const isNewSong = musicTitle.textContent !== newTitle;
+        
+        if (musicTitle.textContent !== newTitle) {
+            musicTitle.textContent = newTitle;
+        }
+        if (musicArtist.textContent !== newArtist) {
+            musicArtist.textContent = newArtist;
+        }
+        if (musicServer.textContent !== newServer) {
+            musicServer.textContent = newServer;
+        }
+        if (musicRequestedBy.textContent !== newRequestedBy) {
+            musicRequestedBy.textContent = newRequestedBy;
+        }
+        
+        // Update thumbnail only if changed
+        const thumbnail = document.getElementById('musicThumbnail');
+        if (currentSong.image) {
+            const newThumbnailSrc = `https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`;
+            if (thumbnail.src !== newThumbnailSrc) {
+                thumbnail.src = newThumbnailSrc;
+            }
+        }
+        
+        // Update YouTube link only if changed
+        const youtubeLink = document.getElementById('musicYoutubeLink');
+        if (currentSong.url && youtubeLink.href !== currentSong.url) {
+            youtubeLink.href = currentSong.url;
+        }
+        
+        // Update duration
+        const duration = formatDuration(currentSong.duration);
+        const musicDuration = document.getElementById('musicDuration');
+        if (musicDuration.textContent !== duration) {
+            musicDuration.textContent = duration;
+        }
+        
+        // Update progress from backend data
+        updateProgress(currentSong.elapsedSeconds || 0, currentSong.progressPercent || 0);
+        
+        // Update queue count only if changed
+        const queueCount = document.getElementById('queueCount');
+        const newQueueCount = currentSong.queueLength || '0';
+        if (queueCount.textContent !== newQueueCount) {
+            queueCount.textContent = newQueueCount;
+        }
+        
+        // Update voice users count only if changed
+        const voiceUsers = document.getElementById('voiceUsers');
+        if (voiceUsers.textContent !== '1') {
+            voiceUsers.textContent = '1';
+        }
+        
+        // Only add animation if this is a new song or first time showing
+        if (wasHidden || isNewSong) {
+            musicPlayingState.classList.add('count-up');
+            setTimeout(() => musicPlayingState.classList.remove('count-up'), 300);
+        }
+        
+    } else {
+        // Show no music state and stop progress tracking
+        noMusicState.classList.remove('d-none');
+        musicPlayingState.classList.add('d-none');
+        stopProgressTracking();
+    }
+}
+
+// Update progress bar and current time
+function updateProgress(elapsedSeconds, progressPercent) {
+    // Update progress bar
+    const progressBar = document.getElementById('musicProgress');
+    progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+    
+    // Update current time display
+    const currentTimeElement = document.getElementById('musicCurrentTime');
+    currentTimeElement.textContent = formatDuration(Math.floor(elapsedSeconds));
+}
+
+// Stop progress tracking (cleanup function)
+function stopProgressTracking() {
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    
+    // Reset progress bar
+    const progressBar = document.getElementById('musicProgress');
+    progressBar.style.width = '0%';
+    
+    // Reset current time
+    const currentTimeElement = document.getElementById('musicCurrentTime');
+    currentTimeElement.textContent = '0:00';
+}
+
+// Format duration from seconds to MM:SS
+function formatDuration(seconds) {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 // Additional functionality for new UI elements
 document.addEventListener('DOMContentLoaded', function() {
