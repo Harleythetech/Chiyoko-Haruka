@@ -81,7 +81,7 @@ class MusicManager{
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setAuthor({name: "Now Playing", iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png"})
-            .setImage(`https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`)
+            .setThumbnail(`https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`)
             .addFields(
                 {name: 'Title', value: `\`\`\`${currentSong.title}\n\`\`\``},
                 {name: 'Duration', value: `\`\`\`${Duration}\n\`\`\``, inline:true },
