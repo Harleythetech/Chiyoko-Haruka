@@ -2,6 +2,7 @@ const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butto
 const {bug, failedtoplay, notoncall, left} = require('../../handlers/embed.js');
 const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, StreamType} = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
+const ytpl = require('ytpl');
 const {BOT_VERSION} = require('../../handlers/config.json');
 
 class MusicManager{
@@ -60,12 +61,13 @@ class MusicManager{
         };
     }
     
-    async play (interaction){
+    async play(interaction) {
         await interaction.deferReply();
         const guildId = interaction.guildId;
         const voicech = interaction.member.voice.channel;
-        //Server Specific Player
-        if(!this.Player.has(guildId)){
+        
+        // Server Specific Player
+        if (!this.Player.has(guildId)) {
             this.Player.set(guildId, {
                 connection: null,
                 player: createAudioPlayer(),
@@ -76,12 +78,12 @@ class MusicManager{
         const player = this.Player.get(guildId);
 
         // Check if user is in a voice channel
-        if(!voicech){
+        if (!voicech) {
             return interaction.reply({embeds: [notoncall]});
         }
         
-        //Create Voice Connection
-        if(!player.connection){
+        // Create Voice Connection
+        if (!player.connection) {
             player.connection = joinVoiceChannel({
                 channelId: voicech.id,
                 guildId: guildId,
@@ -90,8 +92,348 @@ class MusicManager{
             player.connection.subscribe(player.player);
         }
 
-        //Get URL and add to queue
+        // Get URL and detect its type
         const url = interaction.options.getString('url');
+        const urlInfo = this.detectYouTubeUrlType(url);
+        
+        // Handle different URL types
+        await this.handleUrlType(interaction, url, urlInfo);
+    }
+    
+    // Helper method to detect YouTube URL types
+    detectYouTubeUrlType(url) {
+        const urlPatterns = {
+            // Single video patterns
+            singleVideo: /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})(?!.*[&?]list=)/,
+            
+            // Playlist patterns (including mixes)
+            playlist: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})&list=([a-zA-Z0-9_-]+)/,
+            playlistOnly: /^https?:\/\/(www\.)?youtube\.com\/playlist\?list=([a-zA-Z0-9_-]+)/,
+            
+            // Mix patterns (Radio mixes start with RD)
+            mix: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})&list=(RD[a-zA-Z0-9_-]+)/,
+            radioMix: /start_radio=1/
+        };
+        
+        if (urlPatterns.mix.test(url) || urlPatterns.radioMix.test(url)) {
+            return { type: 'mix', url };
+        } else if (urlPatterns.playlist.test(url)) {
+            return { type: 'playlist', url };
+        } else if (urlPatterns.playlistOnly.test(url)) {
+            return { type: 'playlistOnly', url };
+        } else if (urlPatterns.singleVideo.test(url)) {
+            return { type: 'single', url };
+        } else {
+            return { type: 'unknown', url };
+        }
+    }
+    
+    // Helper method to extract video ID from URL
+    extractVideoId(url) {
+        const patterns = [
+            /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+            /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+            /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/
+        ];
+        
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+    
+    // Helper method to extract playlist ID from URL
+    extractPlaylistId(url) {
+        const match = url.match(/[&?]list=([a-zA-Z0-9_-]+)/);
+        return match ? match[1] : null;
+    }
+    
+    // Method to handle different URL types
+    async handleUrlType(interaction, url, urlInfo) {
+        const guildId = interaction.guildId;
+        
+        switch (urlInfo.type) {
+            case 'single':
+                await this.addSingleVideo(interaction, url);
+                break;
+                
+            case 'mix':
+                await this.handleMixPlaylist(interaction, url);
+                break;
+                
+            case 'playlist':
+            case 'playlistOnly':
+                await this.handleRegularPlaylist(interaction, url);
+                break;
+                
+            default:
+                await interaction.editReply({
+                    content: '❌ Invalid YouTube URL. Please provide a valid YouTube video, playlist, or mix link.',
+                    flags: MessageFlags.Ephemeral
+                });
+        }
+    }
+    
+    // Handle YouTube Mix/Radio playlists
+    async handleMixPlaylist(interaction, url) {
+        const guildId = interaction.guildId;
+        const player = this.Player.get(guildId);
+        
+        try {
+            // For mix playlists, we'll start with the main video and let users know it's a mix
+            const videoId = this.extractVideoId(url);
+            const playlistId = this.extractPlaylistId(url);
+            
+            if (!videoId) {
+                return await interaction.editReply({
+                    content: '❌ Could not extract video ID from the mix URL.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+            
+            // Add the main video from the mix
+            const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+            await this.addSingleVideo(interaction, singleVideoUrl, false); // Show Now Playing
+            
+            // Send additional info about mix detection as follow-up
+            const embed = new EmbedBuilder()
+                .setColor('#FF6B6B')
+                .setTitle('🎵 YouTube Mix/Radio Detected!')
+                .setDescription(`Playing from YouTube Mix/Radio playlist.`)
+                .addFields(
+                    { name: '� Now Playing', value: 'The selected song from the mix', inline: false },
+                    { name: '💡 Note', value: 'Mix playlists are dynamic - each song is added individually', inline: false }
+                )
+                .setFooter({ text: `Mix ID: ${playlistId} | ${BOT_VERSION}` })
+                .setTimestamp();
+                
+            // Send the mix info as a follow-up message
+            setTimeout(async () => {
+                try {
+                    await interaction.followUp({ embeds: [embed] });
+                } catch (error) {
+                    console.log('Could not send follow-up embed:', error.message);
+                }
+            }, 2000); // Wait 2 seconds before sending follow-up
+            
+        } catch (error) {
+            console.error('Error handling mix playlist:', error);
+            await interaction.editReply({
+                content: '❌ Error processing YouTube mix. Playing the main video instead.',
+                flags: MessageFlags.Ephemeral
+            });
+            
+            // Fallback to single video
+            const videoId = this.extractVideoId(url);
+            if (videoId) {
+                const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                await this.addSingleVideo(interaction, singleVideoUrl);
+            }
+        }
+    }
+    
+    // Handle regular YouTube playlists - FULL PLAYLIST SUPPORT
+    async handleRegularPlaylist(interaction, url) {
+        const guildId = interaction.guildId;
+        const player = this.Player.get(guildId);
+        
+        try {
+            const playlistId = this.extractPlaylistId(url);
+            
+            if (!playlistId) {
+                return await interaction.editReply({
+                    content: '❌ Could not extract playlist ID from the URL.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+            
+            // Try to get playlist information using ytpl with proper configuration
+            let playlist;
+            try {
+                // Configure ytpl with options that should work without authentication
+                playlist = await ytpl(playlistId, { 
+                    limit: 50,
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        }
+                    }
+                });
+            } catch (ytplError) {
+                console.log('ytpl failed, falling back to single video approach:', ytplError.message);
+                
+                // Fallback: try to get just the specific video from the playlist URL
+                const videoId = this.extractVideoId(url);
+                if (videoId) {
+                    const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                    await this.addSingleVideo(interaction, singleVideoUrl, false);
+                    
+                    // Send fallback message
+                    setTimeout(async () => {
+                        try {
+                            const embed = new EmbedBuilder()
+                                .setColor('#FFA500')
+                                .setTitle('⚠️ Playlist Partially Loaded')
+                                .setDescription('Could not load the full playlist, but playing the selected video.')
+                                .addFields(
+                                    { name: '🎵 Now Playing', value: 'The selected video from the playlist', inline: false },
+                                    { name: '💡 Note', value: 'Try using individual video URLs for best results', inline: false }
+                                )
+                                .setFooter({ text: `Playlist ID: ${playlistId} | ${BOT_VERSION}` })
+                                .setTimestamp();
+                                
+                            await interaction.followUp({ embeds: [embed] });
+                        } catch (error) {
+                            console.log('Could not send fallback embed:', error.message);
+                        }
+                    }, 2000);
+                    return;
+                } else {
+                    return await interaction.editReply({
+                        content: '❌ This playlist cannot be accessed. It may be private or require authentication.',
+                        flags: MessageFlags.Ephemeral
+                    });
+                }
+            }
+            
+            if (!playlist || !playlist.items || playlist.items.length === 0) {
+                return await interaction.editReply({
+                    content: '❌ This playlist is empty or unavailable.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+            
+            // Send initial loading message
+            await interaction.editReply({
+                content: `🔄 Loading playlist: **${playlist.title}** (${playlist.items.length} videos)...`
+            });
+            
+            let addedCount = 0;
+            let startedPlaying = false;
+            const videosToAdd = playlist.items.slice(0, 25); // Limit to 25 videos for performance
+            
+            for (const [index, item] of videosToAdd.entries()) {
+                try {
+                    // Skip unavailable videos
+                    if (!item.id || item.title === '[Private video]' || item.title === '[Deleted video]') {
+                        continue;
+                    }
+                    
+                    const videoUrl = `https://www.youtube.com/watch?v=${item.id}`;
+                    
+                    // Get video info and create resource
+                    const songInfo = await ytdl.getInfo(videoUrl);
+                    const stream = ytdl(videoUrl, {
+                        filter: 'audioonly',
+                        quality: 'highestaudio',
+                        highWaterMark: 1 << 25,
+                        requestOptions: {
+                            maxRetries: 2,
+                            timeout: 8000
+                        }
+                    });
+                    const resource = createAudioResource(stream, {inputType: StreamType.Arbitrary, inlineVolume: true});
+                    
+                    // Add to queue
+                    player.queue.push({
+                        title: songInfo.videoDetails.title,
+                        resource: resource,
+                        image: songInfo.videoDetails.videoId,
+                        Channel: songInfo.videoDetails.author.name,
+                        duration: songInfo.videoDetails.lengthSeconds,
+                        url: videoUrl,
+                        requestedBy: interaction.user.username
+                    });
+                    
+                    addedCount++;
+                    
+                    // Start playing the first song
+                    if (!startedPlaying && player.player.state.status !== AudioPlayerStatus.Playing) {
+                        this.playNextInQueue(guildId);
+                        startedPlaying = true;
+                        
+                        // Send Now Playing embed for the first song
+                        setTimeout(async () => {
+                            try {
+                                await this.sendNowPlayingEmbed(interaction);
+                            } catch (error) {
+                                console.log('Error sending now playing embed:', error.message);
+                            }
+                        }, 1500);
+                    }
+                    
+                    // Update progress every 5 songs
+                    if (index % 5 === 0 && index > 0) {
+                        try {
+                            await interaction.editReply({
+                                content: `🔄 Loading playlist... (${addedCount}/${videosToAdd.length} videos added)`
+                            });
+                        } catch (error) {
+                            // Ignore editing errors
+                        }
+                    }
+                    
+                } catch (videoError) {
+                    console.log(`Skipping video ${item.title}: ${videoError.message}`);
+                    continue;
+                }
+            }
+            
+            // Send final playlist info as follow-up
+            setTimeout(async () => {
+                try {
+                    const embed = new EmbedBuilder()
+                        .setColor('#4285F4')
+                        .setTitle('📋 Full Playlist Added!')
+                        .setDescription(`**${playlist.title}**`)
+                        .addFields(
+                            { name: '🎵 Total Videos', value: `${addedCount} songs added to queue`, inline: true },
+                            { name: '⏱️ Playlist Length', value: `${playlist.items.length} total videos`, inline: true },
+                            { name: '👤 Playlist Author', value: playlist.author?.name || 'Unknown', inline: true }
+                        )
+                        .setThumbnail(playlist.bestThumbnail?.url || null)
+                        .setFooter({ text: `Playlist ID: ${playlistId} | ${BOT_VERSION}` })
+                        .setTimestamp();
+                        
+                    await interaction.followUp({ embeds: [embed] });
+                } catch (error) {
+                    console.log('Could not send playlist follow-up:', error.message);
+                }
+            }, 3000);
+            
+        } catch (error) {
+            console.error('Error handling playlist:', error);
+            
+            // Final fallback: try to play just the video from the URL if possible
+            const videoId = this.extractVideoId(url);
+            if (videoId) {
+                try {
+                    const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                    await this.addSingleVideo(interaction, singleVideoUrl, false);
+                    
+                    await interaction.editReply({
+                        content: '⚠️ Could not load the full playlist, but playing the selected video instead.'
+                    });
+                    return;
+                } catch (fallbackError) {
+                    console.log('Fallback video loading also failed:', fallbackError.message);
+                }
+            }
+            
+            await interaction.editReply({
+                content: '❌ Error processing YouTube playlist. The playlist may be private, unavailable, or require authentication.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+    }
+    
+    // Add a single video to the queue
+    async addSingleVideo(interaction, url, skipReply = false) {
+        const guildId = interaction.guildId;
+        const player = this.Player.get(guildId);
+        
+        try {
             const Songinf = await ytdl.getInfo(url);
             const stream = ytdl(url, {
                 filter: 'audioonly',
@@ -99,11 +441,12 @@ class MusicManager{
                 highWaterMark: 1 << 25, 
                 requestOptions: {
                     maxRetries: 3, 
-                    timeout: 10000}
-                });
-            const resource = createAudioResource(stream,{inputType: StreamType.Arbitrary, inlineVolume: true});
+                    timeout: 10000
+                }
+            });
+            const resource = createAudioResource(stream, {inputType: StreamType.Arbitrary, inlineVolume: true});
 
-            //add to queue
+            // Add to queue
             player.queue.push({
                 title: Songinf.videoDetails.title, 
                 resource: resource,
@@ -113,15 +456,28 @@ class MusicManager{
                 url: url,
                 requestedBy: interaction.user.username
             });
-            //if nothing is currently playing start playing
+            
+            // If nothing is currently playing, start playing
             if (player.player.state.status !== AudioPlayerStatus.Playing) {
                 this.playNextInQueue(guildId);
-                await this.sendNowPlayingEmbed(interaction);
-            } else if (player.player.state.status === AudioPlayerStatus.Playing) {
+                if (!skipReply) {
+                    await this.sendNowPlayingEmbed(interaction);
+                }
+            } else if (player.player.state.status === AudioPlayerStatus.Playing && !skipReply) {
                 await interaction.editReply({
-                    content: `Added \*\*\*${Songinf.videoDetails.title}*\*\* to the queue`
-                , flags: MessageFlags.Ephemeral});
+                    content: `Added **${Songinf.videoDetails.title}** to the queue`
+                });
             }
+            
+        } catch (error) {
+            console.error('Error adding single video:', error);
+            if (!skipReply) {
+                await interaction.editReply({
+                    content: '❌ Error processing the video. Please check the URL and try again.'
+                });
+            }
+            throw error;
+        }
     }
 
     async sendNowPlayingEmbed(interaction) {
@@ -186,7 +542,8 @@ class MusicManager{
             requestedBy: nextSong.requestedBy,
             startTime: startTime,
             isPaused: false,
-            pausedAt: null
+            pausedAt: null,
+            serverName: player.connection?.joinConfig?.guildId ? 'Server' : 'Unknown Server' // Add server info
         });
         player.player.removeAllListeners('stateChange');
         // Listen for when the song ends
@@ -355,7 +712,7 @@ const musicManager = new MusicManager();
 module.exports = {
     data: new SlashCommandBuilder()
     .setName('play-music')
-    .setDescription('Play music (only youtube is currently supported)')
+    .setDescription('Play music from YouTube (videos, playlists, and mixes supported)')
     .addStringOption(option =>
         option.setName('controls')
         .setDescription('Player Controls')
@@ -372,7 +729,7 @@ module.exports = {
     )
     .addStringOption(option => 
         option.setName('url')
-        .setDescription('Enter a youtube url or search query')
+        .setDescription('YouTube URL (video, playlist, or mix)')
         .setRequired(false)
     ),
 
