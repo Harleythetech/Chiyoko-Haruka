@@ -1,2 +1,9 @@
 node_modules
 .env
+
+# Downloaded music files (temporary)
+downloads/*.mp3
+downloads/*.mp4
+downloads/*.webm
+downloads/*.wav
+downloads/*.m4a

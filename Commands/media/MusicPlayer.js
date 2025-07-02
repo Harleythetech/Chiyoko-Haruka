@@ -1,17 +1,82 @@
-const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags} = require('discord.js');
+const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AttachmentBuilder} = require('discord.js');
 const {bug, failedtoplay, notoncall, left} = require('../../handlers/embed.js');
 const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, StreamType} = require('@discordjs/voice');
-const ytdl = require('@distube/ytdl-core');
-const ytpl = require('ytpl');
 const {BOT_VERSION} = require('../../handlers/config.json');
+const ytdl = require('@distube/ytdl-core');
+const ytpl = require('@distube/ytpl');
+const { mixHandler, handleYouTubeMix } = require('./YouTubeMixIntegration');
+const VideoInfoExtractor = require('./VideoInfoExtractor');
+const fs = require('fs');
+const path = require('path');
 
-class MusicManager{
-    constructor(){
-        this.Player = new Map();
+// Retry helper function with exponential backoff
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn();
+        } catch (error) {
+            if (attempt === maxRetries) {
+                throw error;
+            }
+            
+            // Check if it's a rate limit or robot detection error
+            const isRetryableError = error.message.includes('429') || 
+                                   error.message.includes('robot') ||
+                                   error.message.includes('captcha') ||
+                                   error.message.includes('rate limit');
+            
+            if (!isRetryableError) {
+                throw error;
+            }
+            
+            const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
+            console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+}
+
+class MusicManager {
+    constructor() {
+        this.players = new Map();
         this.currentlyPlaying = new Map();
+        this.videoExtractor = new VideoInfoExtractor();
     }
     
-    // Method to get all currently playing music across servers
+    // Helper function to get HD thumbnail from YouTube URL
+    getHDThumbnail(url, fallbackThumbnail = null) {
+        try {
+            // Extract video ID from URL
+            const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+            
+            if (videoIdMatch && videoIdMatch[1]) {
+                const videoId = videoIdMatch[1];
+                // Use maxresdefault for highest quality, fallback to hqdefault if not available
+                return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+            }
+            
+            // If we can't extract video ID, use the fallback
+            return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+        } catch (error) {
+            console.log('Error getting HD thumbnail:', error.message);
+            return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+        }
+    }
+
+    // Helper function to extract video ID from YouTube URL for web GUI
+    extractVideoId(url) {
+        try {
+            const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
+            if (videoIdMatch && videoIdMatch[1]) {
+                return videoIdMatch[1];
+            }
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    // Get all currently playing music across servers
     getAllCurrentlyPlaying() {
         const result = [];
         for (const [guildId, songData] of this.currentlyPlaying) {
@@ -23,23 +88,20 @@ class MusicManager{
         return result;
     }
     
-    // Method to get music data for web dashboard
+    // Get music data for web dashboard
     getWebDashboardData() {
         const playingMusic = this.getAllCurrentlyPlaying();
-        const activePlayerCount = this.Player.size;
+        const activePlayerCount = this.players.size;
         
-        // Enhance with queue information and progress
         const enhancedSongs = playingMusic.map(song => {
-            const player = this.Player.get(song.guildId);
+            const player = this.players.get(song.guildId);
             const currentTime = Date.now();
             let elapsedSeconds = 0;
             
             if (song.startTime) {
                 if (song.isPaused && song.pausedAt) {
-                    // If paused, calculate elapsed time up to pause
                     elapsedSeconds = Math.floor((song.pausedAt - song.startTime) / 1000);
                 } else {
-                    // If playing, calculate current elapsed time
                     elapsedSeconds = Math.floor((currentTime - song.startTime) / 1000);
                 }
             }
@@ -47,9 +109,11 @@ class MusicManager{
             return {
                 ...song,
                 queueLength: player ? player.queue.length : 0,
-                playerStatus: player ? player.player.state.status : 'idle',
+                playerStatus: player ? player.audioPlayer.state.status : 'idle',
                 elapsedSeconds: Math.max(0, elapsedSeconds),
-                progressPercent: song.duration > 0 ? Math.min((elapsedSeconds / song.duration) * 100, 100) : 0
+                progressPercent: song.duration > 0 ? Math.min((elapsedSeconds / song.duration) * 100, 100) : 0,
+                // Extract video ID for web GUI thumbnail
+                image: this.extractVideoId(song.url)
             };
         });
         
@@ -61,510 +125,514 @@ class MusicManager{
         };
     }
     
+    // Initialize player for a guild
+    getOrCreatePlayer(guildId) {
+        if (!this.players.has(guildId)) {
+            this.players.set(guildId, {
+                connection: null,
+                audioPlayer: createAudioPlayer(),
+                queue: [],
+                currentResource: null
+            });
+        }
+        return this.players.get(guildId);
+    }
+    
+    // Check if URL is a YouTube URL
+    isYouTubeURL(url) {
+        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//;
+        return youtubeRegex.test(url);
+    }
+    
+    // Main play function
     async play(interaction) {
         await interaction.deferReply();
+        
         const guildId = interaction.guildId;
-        const voicech = interaction.member.voice.channel;
-        
-        // Server Specific Player
-        if (!this.Player.has(guildId)) {
-            this.Player.set(guildId, {
-                connection: null,
-                player: createAudioPlayer(),
-                queue: [],
-                state: null
-            });
-        }
-        const player = this.Player.get(guildId);
-
-        // Check if user is in a voice channel
-        if (!voicech) {
-            return interaction.reply({embeds: [notoncall]});
-        }
-        
-        // Create Voice Connection
-        if (!player.connection) {
-            player.connection = joinVoiceChannel({
-                channelId: voicech.id,
-                guildId: guildId,
-                adapterCreator: voicech.guild.voiceAdapterCreator
-            });
-            player.connection.subscribe(player.player);
-        }
-
-        // Get URL and detect its type
+        const voiceChannel = interaction.member.voice.channel;
         const url = interaction.options.getString('url');
-        const urlInfo = this.detectYouTubeUrlType(url);
         
-        // Handle different URL types
-        await this.handleUrlType(interaction, url, urlInfo);
-    }
-    
-    // Helper method to detect YouTube URL types
-    detectYouTubeUrlType(url) {
-        const urlPatterns = {
-            // Single video patterns
-            singleVideo: /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})(?!.*[&?]list=)/,
-            
-            // Playlist patterns (including mixes)
-            playlist: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})&list=([a-zA-Z0-9_-]+)/,
-            playlistOnly: /^https?:\/\/(www\.)?youtube\.com\/playlist\?list=([a-zA-Z0-9_-]+)/,
-            
-            // Mix patterns (Radio mixes start with RD)
-            mix: /^https?:\/\/(www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})&list=(RD[a-zA-Z0-9_-]+)/,
-            radioMix: /start_radio=1/
-        };
-        
-        if (urlPatterns.mix.test(url) || urlPatterns.radioMix.test(url)) {
-            return { type: 'mix', url };
-        } else if (urlPatterns.playlist.test(url)) {
-            return { type: 'playlist', url };
-        } else if (urlPatterns.playlistOnly.test(url)) {
-            return { type: 'playlistOnly', url };
-        } else if (urlPatterns.singleVideo.test(url)) {
-            return { type: 'single', url };
-        } else {
-            return { type: 'unknown', url };
+        // Check if user is in a voice channel
+        if (!voiceChannel) {
+            return interaction.editReply({ embeds: [notoncall] });
         }
-    }
-    
-    // Helper method to extract video ID from URL
-    extractVideoId(url) {
-        const patterns = [
-            /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-            /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-            /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/
-        ];
         
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match) return match[1];
-        }
-        return null;
-    }
-    
-    // Helper method to extract playlist ID from URL
-    extractPlaylistId(url) {
-        const match = url.match(/[&?]list=([a-zA-Z0-9_-]+)/);
-        return match ? match[1] : null;
-    }
-    
-    // Method to handle different URL types
-    async handleUrlType(interaction, url, urlInfo) {
-        const guildId = interaction.guildId;
-        
-        switch (urlInfo.type) {
-            case 'single':
-                await this.addSingleVideo(interaction, url);
-                break;
-                
-            case 'mix':
-                await this.handleMixPlaylist(interaction, url);
-                break;
-                
-            case 'playlist':
-            case 'playlistOnly':
-                await this.handleRegularPlaylist(interaction, url);
-                break;
-                
-            default:
-                await interaction.editReply({
-                    content: '❌ Invalid YouTube URL. Please provide a valid YouTube video, playlist, or mix link.',
-                    flags: MessageFlags.Ephemeral
-                });
-        }
-    }
-    
-    // Handle YouTube Mix/Radio playlists
-    async handleMixPlaylist(interaction, url) {
-        const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
-        
-        try {
-            // For mix playlists, we'll start with the main video and let users know it's a mix
-            const videoId = this.extractVideoId(url);
-            const playlistId = this.extractPlaylistId(url);
-            
-            if (!videoId) {
-                return await interaction.editReply({
-                    content: '❌ Could not extract video ID from the mix URL.',
-                    flags: MessageFlags.Ephemeral
-                });
-            }
-            
-            // Add the main video from the mix
-            const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-            await this.addSingleVideo(interaction, singleVideoUrl, false); // Show Now Playing
-            
-            // Send additional info about mix detection as follow-up
-            const embed = new EmbedBuilder()
-                .setColor('#FF6B6B')
-                .setTitle('🎵 YouTube Mix/Radio Detected!')
-                .setDescription(`Playing from YouTube Mix/Radio playlist.`)
-                .addFields(
-                    { name: '� Now Playing', value: 'The selected song from the mix', inline: false },
-                    { name: '💡 Note', value: 'Mix playlists are dynamic - each song is added individually', inline: false }
-                )
-                .setFooter({ text: `Mix ID: ${playlistId} | ${BOT_VERSION}` })
-                .setTimestamp();
-                
-            // Send the mix info as a follow-up message
-            setTimeout(async () => {
-                try {
-                    await interaction.followUp({ embeds: [embed] });
-                } catch (error) {
-                    console.log('Could not send follow-up embed:', error.message);
-                }
-            }, 2000); // Wait 2 seconds before sending follow-up
-            
-        } catch (error) {
-            console.error('Error handling mix playlist:', error);
-            await interaction.editReply({
-                content: '❌ Error processing YouTube mix. Playing the main video instead.',
+        // Validate YouTube URL
+        if (!this.isYouTubeURL(url)) {
+            return interaction.editReply({
+                content: '❌ Please provide a valid YouTube URL.',
                 flags: MessageFlags.Ephemeral
             });
-            
-            // Fallback to single video
-            const videoId = this.extractVideoId(url);
-            if (videoId) {
-                const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                await this.addSingleVideo(interaction, singleVideoUrl);
+        }
+        
+        const player = this.getOrCreatePlayer(guildId);
+        
+        // Create voice connection if needed
+        if (!player.connection) {
+            player.connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: guildId,
+                adapterCreator: voiceChannel.guild.voiceAdapterCreator
+            });
+            player.connection.subscribe(player.audioPlayer);
+        }
+        
+        try {
+            // Check for YouTube Mix FIRST (highest priority)
+            if (mixHandler.isYouTubeMix(url)) {
+                return await handleYouTubeMix.call(this, interaction, url, player);
             }
+            
+            // Check if it looks like a playlist/mix
+            const hasPlaylistParam = url.includes('list=');
+            const listMatch = url.match(/[&?]list=([a-zA-Z0-9_-]+)/);
+            const playlistId = listMatch ? listMatch[1] : null;
+            
+            if (hasPlaylistParam) {
+                await this.handlePlaylist(interaction, url, player);
+            } else {
+                await this.handleSingleVideo(interaction, url, player);
+            }
+        } catch (error) {
+            console.error('Error in play function:', error);
+            await interaction.editReply({
+                content: '❌ An error occurred while processing your request.',
+                flags: MessageFlags.Ephemeral
+            });
         }
     }
     
-    // Handle regular YouTube playlists - FULL PLAYLIST SUPPORT
-    async handleRegularPlaylist(interaction, url) {
-        const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
-        
+    // Handle single video
+    async handleSingleVideo(interaction, url, player) {
         try {
-            const playlistId = this.extractPlaylistId(url);
+            // Use the robust video extractor instead of direct ytdl.getInfo
+            console.log('Extracting video info using robust method...');
+            const videoInfo = await this.videoExtractor.getVideoInfo(url);
             
-            if (!playlistId) {
-                return await interaction.editReply({
-                    content: '❌ Could not extract playlist ID from the URL.',
-                    flags: MessageFlags.Ephemeral
+            if (!videoInfo.success) {
+                throw new Error(videoInfo.error);
+            }
+            
+            const song = {
+                title: videoInfo.title,
+                url: url,
+                duration: videoInfo.duration,
+                thumbnail: this.getHDThumbnail(url, videoInfo.thumbnail),
+                channel: videoInfo.channel,
+                requestedBy: interaction.user.username,
+                extractMethod: videoInfo.method
+            };
+            
+            player.queue.push(song);
+            
+            if (player.audioPlayer.state.status !== AudioPlayerStatus.Playing) {
+                this.playNext(interaction.guildId);
+                await this.sendNowPlayingEmbed(interaction, song);
+            } else {
+                await interaction.editReply({
+                    content: `✅ Added **${song.title}** to the queue (Position: ${player.queue.length})`
                 });
             }
             
-            // Try to get playlist information using ytpl with proper configuration
-            let playlist;
-            try {
-                // Configure ytpl with options that should work without authentication
-                playlist = await ytpl(playlistId, { 
-                    limit: 50,
-                    requestOptions: {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                        }
-                    }
-                });
-            } catch (ytplError) {
-                console.log('ytpl failed, falling back to single video approach:', ytplError.message);
-                
-                // Fallback: try to get just the specific video from the playlist URL
-                const videoId = this.extractVideoId(url);
-                if (videoId) {
-                    const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                    await this.addSingleVideo(interaction, singleVideoUrl, false);
-                    
-                    // Send fallback message
-                    setTimeout(async () => {
-                        try {
-                            const embed = new EmbedBuilder()
-                                .setColor('#FFA500')
-                                .setTitle('⚠️ Playlist Partially Loaded')
-                                .setDescription('Could not load the full playlist, but playing the selected video.')
-                                .addFields(
-                                    { name: '🎵 Now Playing', value: 'The selected video from the playlist', inline: false },
-                                    { name: '💡 Note', value: 'Try using individual video URLs for best results', inline: false }
-                                )
-                                .setFooter({ text: `Playlist ID: ${playlistId} | ${BOT_VERSION}` })
-                                .setTimestamp();
-                                
-                            await interaction.followUp({ embeds: [embed] });
-                        } catch (error) {
-                            console.log('Could not send fallback embed:', error.message);
-                        }
-                    }, 2000);
-                    return;
-                } else {
-                    return await interaction.editReply({
-                        content: '❌ This playlist cannot be accessed. It may be private or require authentication.',
-                        flags: MessageFlags.Ephemeral
-                    });
-                }
+        } catch (error) {
+            console.error('Error handling single video:', error);
+            
+            // Provide more specific error messages
+            let errorMessage = '❌ Failed to process the video. Please check the URL and try again.';
+            
+            if (error.message.includes('robot') || error.message.includes('captcha')) {
+                errorMessage = '❌ YouTube is temporarily blocking requests. Please try again in a few minutes.';
+            } else if (error.message.includes('429')) {
+                errorMessage = '❌ Rate limit exceeded. Please wait a moment before trying again.';
+            } else if (error.message.includes('Video unavailable')) {
+                errorMessage = '❌ This video is unavailable, private, or age-restricted.';
+            } else if (error.message.includes('All methods failed')) {
+                errorMessage = '❌ Could not extract video information. The video may be unavailable or restricted.';
             }
             
-            if (!playlist || !playlist.items || playlist.items.length === 0) {
-                return await interaction.editReply({
-                    content: '❌ This playlist is empty or unavailable.',
-                    flags: MessageFlags.Ephemeral
+            await interaction.editReply({ content: errorMessage });
+        }
+    }
+    
+    // Handle regular playlists (mixes are handled separately)
+    async handlePlaylist(interaction, url, player) {
+        try {
+            await interaction.editReply({ content: '🔄 Loading playlist...' });
+            
+            const playlist = await ytpl(url, { limit: 50 });
+            
+            if (!playlist.items || playlist.items.length === 0) {
+                return interaction.editReply({
+                    content: '❌ This playlist is empty or unavailable.'
                 });
             }
-            
-            // Send initial loading message
-            await interaction.editReply({
-                content: `🔄 Loading playlist: **${playlist.title}** (${playlist.items.length} videos)...`
-            });
             
             let addedCount = 0;
-            let startedPlaying = false;
-            const videosToAdd = playlist.items.slice(0, 25); // Limit to 25 videos for performance
+            let skippedCount = 0;
+            const wasEmpty = player.queue.length === 0 && player.audioPlayer.state.status !== AudioPlayerStatus.Playing;
             
-            for (const [index, item] of videosToAdd.entries()) {
-                try {
-                    // Skip unavailable videos
-                    if (!item.id || item.title === '[Private video]' || item.title === '[Deleted video]') {
-                        continue;
-                    }
-                    
-                    const videoUrl = `https://www.youtube.com/watch?v=${item.id}`;
-                    
-                    // Get video info and create resource
-                    const songInfo = await ytdl.getInfo(videoUrl);
-                    const stream = ytdl(videoUrl, {
-                        filter: 'audioonly',
-                        quality: 'highestaudio',
-                        highWaterMark: 1 << 25,
-                        requestOptions: {
-                            maxRetries: 2,
-                            timeout: 8000
-                        }
-                    });
-                    const resource = createAudioResource(stream, {inputType: StreamType.Arbitrary, inlineVolume: true});
-                    
-                    // Add to queue
-                    player.queue.push({
-                        title: songInfo.videoDetails.title,
-                        resource: resource,
-                        image: songInfo.videoDetails.videoId,
-                        Channel: songInfo.videoDetails.author.name,
-                        duration: songInfo.videoDetails.lengthSeconds,
-                        url: videoUrl,
-                        requestedBy: interaction.user.username
-                    });
-                    
-                    addedCount++;
-                    
-                    // Start playing the first song
-                    if (!startedPlaying && player.player.state.status !== AudioPlayerStatus.Playing) {
-                        this.playNextInQueue(guildId);
-                        startedPlaying = true;
-                        
-                        // Send Now Playing embed for the first song
-                        setTimeout(async () => {
-                            try {
-                                await this.sendNowPlayingEmbed(interaction);
-                            } catch (error) {
-                                console.log('Error sending now playing embed:', error.message);
-                            }
-                        }, 1500);
-                    }
-                    
-                    // Update progress every 5 songs
-                    if (index % 5 === 0 && index > 0) {
-                        try {
-                            await interaction.editReply({
-                                content: `🔄 Loading playlist... (${addedCount}/${videosToAdd.length} videos added)`
-                            });
-                        } catch (error) {
-                            // Ignore editing errors
-                        }
-                    }
-                    
-                } catch (videoError) {
-                    console.log(`Skipping video ${item.title}: ${videoError.message}`);
+            await interaction.editReply({ content: '🔄 Processing playlist songs...' });
+            
+            for (const item of playlist.items) {
+                if (!item.id || item.title === '[Private video]' || item.title === '[Deleted video]') {
+                    skippedCount++;
                     continue;
+                }
+                
+                const songUrl = item.shortUrl || `https://www.youtube.com/watch?v=${item.id}`;
+                
+                // Skip detailed validation for playlists to speed up processing
+                // Let individual songs fail during playback if needed
+                const song = {
+                    title: item.title,
+                    url: songUrl,
+                    duration: item.durationSec || 0,
+                    thumbnail: this.getHDThumbnail(songUrl, item.bestThumbnail?.url || item.thumbnails?.[0]?.url),
+                    channel: item.author?.name || 'Unknown',
+                    requestedBy: interaction.user.username,
+                    extractMethod: 'playlist-direct' // Mark as from playlist
+                };
+                
+                player.queue.push(song);
+                addedCount++;
+                
+                // Update progress every 10 songs
+                if (addedCount % 10 === 0) {
+                    await interaction.editReply({ 
+                        content: `🔄 Added ${addedCount}/${playlist.items.length} songs...` 
+                    });
                 }
             }
             
-            // Send final playlist info as follow-up
-            setTimeout(async () => {
-                try {
-                    const embed = new EmbedBuilder()
-                        .setColor('#4285F4')
-                        .setTitle('📋 Full Playlist Added!')
-                        .setDescription(`**${playlist.title}**`)
-                        .addFields(
-                            { name: '🎵 Total Videos', value: `${addedCount} songs added to queue`, inline: true },
-                            { name: '⏱️ Playlist Length', value: `${playlist.items.length} total videos`, inline: true },
-                            { name: '👤 Playlist Author', value: playlist.author?.name || 'Unknown', inline: true }
-                        )
-                        .setThumbnail(playlist.bestThumbnail?.url || null)
-                        .setFooter({ text: `Playlist ID: ${playlistId} | ${BOT_VERSION}` })
-                        .setTimestamp();
-                        
-                    await interaction.followUp({ embeds: [embed] });
-                } catch (error) {
-                    console.log('Could not send playlist follow-up:', error.message);
-                }
-            }, 3000);
+            if (wasEmpty && addedCount > 0) {
+                this.playNext(interaction.guildId);
+                await this.sendPlaylistEmbed(interaction, playlist, addedCount, false, skippedCount);
+            } else {
+                const message = `✅ Added **${addedCount}** songs from playlist **${playlist.title}** to the queue` +
+                               (skippedCount > 0 ? ` (${skippedCount} songs skipped)` : '');
+                await interaction.editReply({ content: message });
+            }
             
         } catch (error) {
             console.error('Error handling playlist:', error);
             
-            // Final fallback: try to play just the video from the URL if possible
-            const videoId = this.extractVideoId(url);
-            if (videoId) {
-                try {
-                    const singleVideoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-                    await this.addSingleVideo(interaction, singleVideoUrl, false);
-                    
-                    await interaction.editReply({
-                        content: '⚠️ Could not load the full playlist, but playing the selected video instead.'
-                    });
-                    return;
-                } catch (fallbackError) {
-                    console.log('Fallback video loading also failed:', fallbackError.message);
-                }
+            // Fallback: try to extract and play single video from URL
+            const videoMatch = url.match(/[&?]v=([a-zA-Z0-9_-]{11})/);
+            if (videoMatch) {
+                const videoId = videoMatch[1];
+                const fallbackUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                
+                await interaction.editReply({
+                    content: '⚠️ Could not load playlist, but found a video. Playing that instead...'
+                });
+                
+                return await this.handleSingleVideo(interaction, fallbackUrl, player);
             }
             
             await interaction.editReply({
-                content: '❌ Error processing YouTube playlist. The playlist may be private, unavailable, or require authentication.',
-                flags: MessageFlags.Ephemeral
+                content: '❌ Failed to load playlist. It may be private or unavailable.'
             });
         }
     }
     
-    // Add a single video to the queue
-    async addSingleVideo(interaction, url, skipReply = false) {
-        const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
+    // Play next song in queue
+    playNext(guildId) {
+        const player = this.players.get(guildId);
         
-        try {
-            const Songinf = await ytdl.getInfo(url);
-            const stream = ytdl(url, {
-                filter: 'audioonly',
-                quality: 'highestaudio',
-                highWaterMark: 1 << 25, 
-                requestOptions: {
-                    maxRetries: 3, 
-                    timeout: 10000
-                }
-            });
-            const resource = createAudioResource(stream, {inputType: StreamType.Arbitrary, inlineVolume: true});
-
-            // Add to queue
-            player.queue.push({
-                title: Songinf.videoDetails.title, 
-                resource: resource,
-                image: Songinf.videoDetails.videoId,
-                Channel: Songinf.videoDetails.author.name,
-                duration: Songinf.videoDetails.lengthSeconds,
-                url: url,
-                requestedBy: interaction.user.username
-            });
-            
-            // If nothing is currently playing, start playing
-            if (player.player.state.status !== AudioPlayerStatus.Playing) {
-                this.playNextInQueue(guildId);
-                if (!skipReply) {
-                    await this.sendNowPlayingEmbed(interaction);
-                }
-            } else if (player.player.state.status === AudioPlayerStatus.Playing && !skipReply) {
-                await interaction.editReply({
-                    content: `Added **${Songinf.videoDetails.title}** to the queue`
-                });
-            }
-            
-        } catch (error) {
-            console.error('Error adding single video:', error);
-            if (!skipReply) {
-                await interaction.editReply({
-                    content: '❌ Error processing the video. Please check the URL and try again.'
-                });
-            }
-            throw error;
-        }
-    }
-
-    async sendNowPlayingEmbed(interaction) {
-        const guildId = interaction.guildId;
-        const currentSong = this.currentlyPlaying.get(guildId);
-        const Duration = Math.floor(currentSong.duration / 60) + ':' + (currentSong.duration % 60);
-        const embed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setAuthor({name: "Now Playing", iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png"})
-            .setThumbnail(`https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`)
-            .addFields(
-                {name: 'Title', value: `\`\`\`${currentSong.title}\n\`\`\``},
-                {name: 'Duration', value: `\`\`\`${Duration}\n\`\`\``, inline:true },
-                {name: 'Channel / Artist', value: `\`\`\`${currentSong.Channel}\n\`\`\``, inline: true}
-            )
-            .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
-            .setTimestamp();
-
-        const playbtn = new ButtonBuilder()
-            .setLabel('Play in Youtube')
-            .setStyle(ButtonStyle.Link)
-            .setURL(currentSong.url);
-        const row = new ActionRowBuilder()
-            .addComponents(playbtn);
-
-        await interaction.editReply({ embeds: [embed], components: [row] });
-}
-    //Checks the current player state plays the next one if not playing anything
-    playNextInQueue(guildId) {
-        const player = this.Player.get(guildId);
-
         if (!player || player.queue.length === 0) {
-            // Clear currently playing when queue is empty
-            if(player.currentResource){
+            this.currentlyPlaying.delete(guildId);
+            if (player?.currentResource) {
                 player.currentResource.audioPlayer = null;
                 player.currentResource.encoder?.destroy();
                 player.currentResource = null;
             }
-            this.currentlyPlaying.delete(guildId);
             return;
         }
-
+        
         const nextSong = player.queue.shift();
+        
+        const attemptPlay = async () => {
+            try {
+                // Try multiple streaming approaches with fallbacks
+                let stream;
+                let streamCreated = false;
+                
+                // Method 1: Try basic ytdl without extra options
+                try {
+                    stream = ytdl(nextSong.url, {
+                        filter: 'audioonly',
+                        quality: 'highestaudio',
+                        highWaterMark: 1 << 25, // Add buffering back
+                        requestOptions: {
+                            headers: {
+                                'Range': 'bytes=0-'
+                            }
+                        }
+                    });
+                    streamCreated = true;
+                } catch (basicError) {
+                    // Basic ytdl failed, continue to next method
+                }
+                
+                // Method 2: Try without any options if basic failed
+                if (!streamCreated) {
+                    try {
+                        console.log('Trying minimal ytdl streaming...');
+                        stream = ytdl(nextSong.url, {
+                            highWaterMark: 1 << 25 // Keep buffering even in minimal mode
+                        });
+                        streamCreated = true;
+                        console.log('Minimal ytdl stream created successfully');
+                    } catch (minimalError) {
+                        console.log('Minimal ytdl failed:', minimalError.message);
+                    }
+                }
+                
+                if (!streamCreated) {
+                    throw new Error('All streaming methods failed');
+                }
+                
+                // Add error handling to the stream
+                stream.on('error', (error) => {
+                    console.log(`Stream error (non-fatal): ${error.message}`);
+                    // Only skip if it's a critical error, not 'aborted'
+                    if (!error.message.includes('aborted')) {
+                        if (player.queue.length > 0) {
+                            console.log('Non-aborted error, skipping to next song...');
+                            this.playNext(guildId);
+                        }
+                    }
+                });
 
-        if(player.currentResource){
-            player.currentResource.audioPlayer = null;
-            player.currentResource.encoder?.destroy();
-            player.currentResource = null;
-        }
+                // Add end handler to prevent aborted errors
+                stream.on('end', () => {
+                    // Stream ended naturally
+                });
 
-        player.currentResource = nextSong.resource;
-        player.player.play(nextSong.resource);
+                stream.on('close', () => {
+                    // Stream closed
+                });
 
-        // Update currently playing for this guild with start time
-        const startTime = Date.now();
-        this.currentlyPlaying.set(guildId, {
-            title: nextSong.title,
-            url: nextSong.url,
-            image: nextSong.image,
-            duration: nextSong.duration,
-            Channel: nextSong.Channel,
-            requestedBy: nextSong.requestedBy,
-            startTime: startTime,
-            isPaused: false,
-            pausedAt: null,
-            serverName: player.connection?.joinConfig?.guildId ? 'Server' : 'Unknown Server' // Add server info
-        });
-        player.player.removeAllListeners('stateChange');
-        // Listen for when the song ends
-        player.player.on('stateChange', (oldstate, newstate) => {
-            if (newstate.status === AudioPlayerStatus.Idle) {
-                this.playNextInQueue(guildId);
+                const resource = createAudioResource(stream, {
+                    inputType: StreamType.Arbitrary,
+                    inlineVolume: true
+                });
+                
+                // Add error handling to the resource but don't crash on aborted
+                resource.playStream.on('error', (error) => {
+                    console.log(`Resource stream error (non-fatal): ${error.message}`);
+                    // Don't skip on aborted errors - they're normal when stopping/skipping
+                    if (!error.message.includes('aborted')) {
+                        console.log('Non-aborted resource error, this might be serious');
+                    }
+                });
+                
+                // Clean up previous resource
+                if (player.currentResource) {
+                    try {
+                        player.currentResource.audioPlayer = null;
+                        if (player.currentResource.encoder) {
+                            player.currentResource.encoder.destroy();
+                        }
+                    } catch (cleanupError) {
+                        console.log('Cleanup error (non-fatal):', cleanupError.message);
+                    }
+                }
+                
+                player.currentResource = resource;
+                player.audioPlayer.play(resource);
+                
+                // Update currently playing
+                this.currentlyPlaying.set(guildId, {
+                    ...nextSong,
+                    startTime: Date.now(),
+                    isPaused: false,
+                    pausedAt: null
+                });
+                
+                // Set up event listener for when song ends
+                player.audioPlayer.removeAllListeners('stateChange');
+                player.audioPlayer.on('stateChange', (oldState, newState) => {
+                    if (newState.status === AudioPlayerStatus.Idle) {
+                        this.playNext(guildId);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error playing song:', error.message);
+                console.log(`Failed to play: ${nextSong.title} - skipping to next song`);
+                
+                // If this song fails, try the next one
+                if (player.queue.length > 0) {
+                    console.log(`Trying next song in queue (${player.queue.length} remaining)...`);
+                    this.playNext(guildId);
+                } else {
+                    console.log('No more songs in queue, stopping playback');
+                    // No more songs, stop playback
+                    this.currentlyPlaying.delete(guildId);
+                    if (player.currentResource) {
+                        player.currentResource.audioPlayer = null;
+                        player.currentResource.encoder?.destroy();
+                        player.currentResource = null;
+                    }
+                }
             }
+        };
+        
+        attemptPlay();
+    }
+    
+    // Send now playing embed
+    async sendNowPlayingEmbed(interaction, song) {
+        const duration = this.formatDuration(song.duration);
+        
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setAuthor({ 
+                name: "Now Playing", 
+                iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png" 
+            })
+            .setImage(song.thumbnail)
+            .addFields(
+                { name: 'Title', value: `\`\`\`${song.title}\`\`\`` },
+                { name: 'Duration', value: `\`\`\`${duration || 'Unknown'}\`\`\``, inline: true },
+                { name: 'Channel', value: `\`\`\`${song.channel}\`\`\``, inline: true }
+            )
+            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        const playButton = new ButtonBuilder()
+            .setLabel('Play on YouTube')
+            .setStyle(ButtonStyle.Link)
+            .setURL(song.url);
+        
+        const downloadButton = new ButtonBuilder()
+            .setCustomId(`download_song_${interaction.guildId}`)
+            .setLabel('📥 Download Song')
+            .setStyle(ButtonStyle.Secondary);
+        
+        const row = new ActionRowBuilder().addComponents(playButton, downloadButton);
+        
+        await interaction.editReply({ embeds: [embed], components: [row] });
+    }
+    
+    // Send playlist embed
+    async sendPlaylistEmbed(interaction, playlist, addedCount, isMix = false, skippedCount = 0) {
+        const playlistType = isMix ? '🎵 Mix' : '📋 Playlist';
+        const emoji = isMix ? '🎲' : '📋';
+        
+        const embed = new EmbedBuilder()
+            .setColor(isMix ? '#FF6B6B' : '#4285F4')
+            .setTitle(`${emoji} ${isMix ? 'Mix' : 'Playlist'} Added!`)
+            .setDescription(`**${playlist.title}**`)
+            .addFields(
+                { name: '🎵 Songs Added', value: `${addedCount}`, inline: true },
+                { name: '👤 Author', value: playlist.author?.name || 'YouTube', inline: true },
+                { name: '📊 Total Videos', value: `${playlist.estimatedItemCount || playlist.items?.length || addedCount}`, inline: true }
+            )
+            .setThumbnail(playlist.bestThumbnail?.url || playlist.thumbnails?.[0]?.url)
+            .setFooter({ text: `${isMix ? 'Mix ID: ' + playlist.id : 'Playlist ID: ' + playlist.id} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        if (skippedCount > 0) {
+            embed.addFields({
+                name: '⚠️ Skipped',
+                value: `${skippedCount} songs were skipped (unavailable or restricted)`,
+                inline: false
+            });
+        }
+        
+        if (isMix) {
+            embed.addFields({
+                name: '💡 Note',
+                value: 'This is a YouTube Mix - songs are dynamically generated based on your selection.',
+                inline: false
+            });
+        }
+        
+        await interaction.editReply({ embeds: [embed] });
+    }
+    
+    // Send enhanced mix embed with first song thumbnail
+    async sendEnhancedMixEmbed(interaction, playlist, addedCount, firstSong, skippedCount = 0) {
+        const embed = new EmbedBuilder()
+            .setColor('#FF6B6B')
+            .setTitle('🎲 YouTube Mix Added!')
+            .setDescription(`**${playlist.title}**`)
+            .addFields(
+                { name: '🎵 Songs Added', value: `${addedCount}`, inline: true },
+                { name: '👤 Author', value: playlist.author?.name || 'YouTube', inline: true },
+                { name: '📊 Total Videos', value: `${playlist.estimatedItemCount || addedCount}`, inline: true }
+            )
+            .setFooter({ text: `Mix ID: ${playlist.id} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        // Add the first song's thumbnail as the main image
+        if (firstSong && firstSong.thumbnail) {
+            embed.setImage(firstSong.thumbnail);
+            embed.addFields({
+                name: '🎵 Now Starting',
+                value: `**${firstSong.title}**\nby ${firstSong.channel}`,
+                inline: false
+            });
+        }
+        
+        if (skippedCount > 0) {
+            embed.addFields({
+                name: '⚠️ Skipped',
+                value: `${skippedCount} songs were skipped (unavailable or restricted)`,
+                inline: false
+            });
+        }
+        
+        embed.addFields({
+            name: '💡 Note',
+            value: 'This is a YouTube Mix - songs are dynamically generated based on your selection.',
+            inline: false
+        });
+        
+        // Add download button for the first song if available
+        let row = null;
+        if (firstSong && firstSong.url) {
+            const downloadButton = new ButtonBuilder()
+                .setCustomId(`download_song_${interaction.guildId}`)
+                .setLabel('📥 Download Current Song')
+                .setStyle(ButtonStyle.Secondary);
+            
+            const playButton = new ButtonBuilder()
+                .setLabel('Play on YouTube')
+                .setStyle(ButtonStyle.Link)
+                .setURL(firstSong.url);
+            
+            row = new ActionRowBuilder().addComponents(downloadButton, playButton);
+        }
+        
+        // Update footer
+        embed.setFooter({ text: `Mix ID: ${playlist.id} | ${BOT_VERSION}` });
+        
+        await interaction.editReply({ 
+            embeds: [embed], 
+            components: row ? [row] : [] 
         });
     }
-
-    // Pause the player
-
+    
+    // Format duration from seconds to MM:SS
+    formatDuration(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+    
+    // Pause the current song
     async pause(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
-
-        if (!player || player.player.state.status !== AudioPlayerStatus.Playing) {
-            return interaction.reply({ content: 'Nothing is playing' });
+        const player = this.players.get(guildId);
+        
+        if (!player || player.audioPlayer.state.status !== AudioPlayerStatus.Playing) {
+            return interaction.reply({ content: '❌ Nothing is currently playing.' });
         }
-
-        player.player.pause();
+        
+        player.audioPlayer.pause();
         
         // Update pause state
         const currentSong = this.currentlyPlaying.get(guildId);
@@ -572,142 +640,334 @@ class MusicManager{
             currentSong.isPaused = true;
             currentSong.pausedAt = Date.now();
             this.currentlyPlaying.set(guildId, currentSong);
-            
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle('Paused ⏸️')
-                .setDescription(`${currentSong.title}`)
-                .setImage(`https://media.tenor.com/WEtJpm07k9oAAAAM/music-stopped-silence.gif`)
-                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
         }
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setTitle('⏸️ Paused')
+            .setDescription(currentSong ? currentSong.title : 'Music paused')
+            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
     }
-
-    // Resume the player
-
+    
+    // Resume the current song
     async resume(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
-
-        if (!player || player.player.state.status !== AudioPlayerStatus.Paused) {
-            return interaction.reply({ content: 'Nothing is paused' });
-        }
-
-        player.player.unpause();
+        const player = this.players.get(guildId);
         
-        // Update resume state and adjust start time
+        if (!player || player.audioPlayer.state.status !== AudioPlayerStatus.Paused) {
+            return interaction.reply({ content: '❌ Nothing is currently paused.' });
+        }
+        
+        player.audioPlayer.unpause();
+        
+        // Update resume state
         const currentSong = this.currentlyPlaying.get(guildId);
         if (currentSong && currentSong.isPaused) {
             const pauseDuration = Date.now() - currentSong.pausedAt;
-            currentSong.startTime += pauseDuration; // Adjust start time by pause duration
+            currentSong.startTime += pauseDuration;
             currentSong.isPaused = false;
             currentSong.pausedAt = null;
             this.currentlyPlaying.set(guildId, currentSong);
-            
-            const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('Resumed ▶️')
-                .setDescription(`${currentSong.title}`)
-                .setImage(`https://y.yarn.co/da965212-e1c4-46a1-a772-e9757d322bcb_text.gif`)
-                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
         }
+        
+        const embed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('▶️ Resumed')
+            .setDescription(currentSong ? currentSong.title : 'Music resumed')
+            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
     }
-
+    
     // Skip the current song
     async skip(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
+        const player = this.players.get(guildId);
+        
+        if (!player || player.audioPlayer.state.status === AudioPlayerStatus.Idle) {
+            return interaction.reply({ content: '❌ Nothing is currently playing.' });
+        }
+        
         const currentSong = this.currentlyPlaying.get(guildId);
-
-        if (!player || player.player.state.status !== AudioPlayerStatus.Playing) {
-            return interaction.reply({ content: 'Nothing is playing' });
-        }
-
-        player.player.stop();
-        this.playNextInQueue(guildId);
-
-        // Send updated Now Playing embed
-        if (currentSong) {
-            await interaction.deferReply();
-            await this.sendNowPlayingEmbed(interaction);
-        } else {
-            await interaction.reply({ content: 'Skipped. No more songs in the queue.' });
-        }
+        player.audioPlayer.stop(); // This will trigger the next song
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FFA500')
+            .setTitle('⏭️ Skipped')
+            .setDescription(currentSong ? `Skipped: ${currentSong.title}` : 'Song skipped')
+            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
     }
-
-    // Stop the player
+    
+    // Stop playback and clear queue
     async stop(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
+        const player = this.players.get(guildId);
         
-        if (player) {
-            player.player.stop();
-            player.queue = [];
-
-            const embed = new EmbedBuilder()
-                .setColor('#FF0000')
-                .setTitle('Stopped ⏹️')
-                .setDescription('Music playback has been stopped')
-                .setImage(`https://media.tenor.com/WEtJpm07k9oAAAAM/music-stopped-silence.gif`)
-                .setFooter({text: `Requested By ${interaction.user.tag} | ${BOT_VERSION}`})
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
-        } else {
-            await interaction.reply('No active music player.');
+        if (!player) {
+            return interaction.reply({ content: '❌ No active music player.' });
         }
+        
+        player.audioPlayer.stop();
+        player.queue = [];
+        this.currentlyPlaying.delete(guildId);
+        
+        if (player.currentResource) {
+            player.currentResource.audioPlayer = null;
+            player.currentResource.encoder?.destroy();
+            player.currentResource = null;
+        }
+        
+        const embed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setTitle('⏹️ Stopped')
+            .setDescription('Music playback stopped and queue cleared.')
+            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
     }
-
-    // Queue the current song
+    
+    // Show current queue
     async queue(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
+        const player = this.players.get(guildId);
+        const currentSong = this.currentlyPlaying.get(guildId);
         
-        if (player && player.queue.length > 0) {
-            const queueList = player.queue.map((song, index) => 
+        if (!player || (!currentSong && player.queue.length === 0)) {
+            return interaction.reply({ content: '❌ The queue is empty.' });
+        }
+        
+        let queueText = '';
+        
+        if (currentSong) {
+            queueText += `**🎵 Now Playing:**\n${currentSong.title}\n\n`;
+        }
+        
+        if (player.queue.length > 0) {
+            queueText += `**📃 Up Next:**\n`;
+            const queueList = player.queue.slice(0, 10).map((song, index) => 
                 `${index + 1}. ${song.title}`
             ).join('\n');
+            queueText += queueList;
             
-            await interaction.reply(`Current Queue 📃:\n${queueList}`);
-        } else {
-            await interaction.reply('The queue is empty.');
+            if (player.queue.length > 10) {
+                queueText += `\n... and ${player.queue.length - 10} more`;
+            }
         }
+        
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setTitle('📃 Music Queue')
+            .setDescription(queueText)
+            .setFooter({ text: `Total songs: ${player.queue.length + (currentSong ? 1 : 0)} | ${BOT_VERSION}` })
+            .setTimestamp();
+        
+        await interaction.reply({ embeds: [embed] });
     }
-
-    // Leave the voice channel
+    
+    // Leave voice channel
     async leave(interaction) {
         const guildId = interaction.guildId;
-        const player = this.Player.get(guildId);
+        const player = this.players.get(guildId);
         
-        if (player) {
-            player.player.stop();
-            player.queue = [];
-            this.currentlyPlaying.delete(guildId);
-
-            if (player.connection) {
-                player.connection.destroy();
-                player.connection = null;
+        if (!player || !player.connection) {
+            return interaction.reply({ content: '❌ Not connected to a voice channel.' });
+        }
+        
+        // Clean up
+        player.audioPlayer.stop();
+        player.queue = [];
+        this.currentlyPlaying.delete(guildId);
+        
+        if (player.currentResource) {
+            player.currentResource.audioPlayer = null;
+            player.currentResource.encoder?.destroy();
+            player.currentResource = null;
+        }
+        
+        player.connection.destroy();
+        this.players.delete(guildId);
+        
+        await interaction.reply({ embeds: [left] });
+    }
+    
+    // Download current song
+    async downloadCurrentSong(interaction) {
+        const guildId = interaction.guildId;
+        const currentSong = this.currentlyPlaying.get(guildId);
+        
+        if (!currentSong) {
+            return interaction.reply({ 
+                content: '❌ No song is currently playing.',
+                flags: MessageFlags.Ephemeral
+            });
+        }
+        
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        
+        try {
+            // Create downloads directory if it doesn't exist
+            const downloadsDir = path.join(process.cwd(), 'downloads');
+            if (!fs.existsSync(downloadsDir)) {
+                fs.mkdirSync(downloadsDir, { recursive: true });
             }
-
-            await interaction.reply({ embeds: [left] });
-        } else {
-            await interaction.reply('Not in a voice channel.');
+            
+            // Clean filename for file system
+            const cleanTitle = currentSong.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
+            const filename = `${cleanTitle}.mp3`;
+            const filepath = path.join(downloadsDir, filename);
+            
+            // Update user with progress
+            await interaction.editReply({ 
+                content: `🔄 Downloading **${currentSong.title}**...\nThis may take a moment depending on the song length.` 
+            });
+            
+            // Download the audio stream
+            const audioStream = ytdl(currentSong.url, {
+                filter: 'audioonly',
+                quality: 'highestaudio',
+                format: 'mp3'
+            });
+            
+            // Create write stream
+            const writeStream = fs.createWriteStream(filepath);
+            
+            // Pipe the audio stream to file
+            audioStream.pipe(writeStream);
+            
+            // Wait for download to complete
+            await new Promise((resolve, reject) => {
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+                audioStream.on('error', reject);
+            });
+            
+            // Check file size (Discord has 25MB limit for regular uploads)
+            const stats = fs.statSync(filepath);
+            const fileSizeInMB = stats.size / (1024 * 1024);
+            
+            if (fileSizeInMB > 25) {
+                // Clean up the file
+                fs.unlinkSync(filepath);
+                
+                // File too large for Discord
+                const embed = new EmbedBuilder()
+                    .setColor('#FF6B6B')
+                    .setTitle('📥 File Too Large for Discord')
+                    .setDescription(`**${currentSong.title}** is too large (${fileSizeInMB.toFixed(1)}MB) for Discord upload.\n\nDiscord has a 25MB file size limit. Please try a shorter song or use the command '/play-music download' for other options.`)
+                    .addFields(
+                        { name: '🎵 Song', value: `\`\`\`${currentSong.title}\`\`\`` },
+                        { name: '⏱️ Duration', value: `\`\`\`${this.formatDuration(currentSong.duration) || 'Unknown'}\`\`\``, inline: true },
+                        { name: '� File Size', value: `\`\`\`${fileSizeInMB.toFixed(1)} MB\`\`\``, inline: true }
+                    )
+                    .setThumbnail(currentSong.thumbnail)
+                    .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+                    .setTimestamp();
+                
+                return await interaction.editReply({ 
+                    content: '', 
+                    embeds: [embed]
+                });
+            }
+            
+            // Create attachment and send
+            const attachment = new AttachmentBuilder(filepath, { name: filename });
+            
+            const embed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('📥 Download Complete!')
+                .setDescription(`**${currentSong.title}**\nby ${currentSong.channel}`)
+                .addFields(
+                    { name: '📁 File Size', value: `\`\`\`${fileSizeInMB.toFixed(2)} MB\`\`\``, inline: true },
+                    { name: '⏱️ Duration', value: `\`\`\`${this.formatDuration(currentSong.duration) || 'Unknown'}\`\`\``, inline: true },
+                    { name: '🎵 Format', value: `\`\`\`MP3 Audio\`\`\``, inline: true }
+                )
+                .setThumbnail(currentSong.thumbnail)
+                .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+                .setTimestamp();
+            
+            const playButton = new ButtonBuilder()
+                .setLabel('Play on YouTube')
+                .setStyle(ButtonStyle.Link)
+                .setURL(currentSong.url);
+            
+            const row = new ActionRowBuilder().addComponents(playButton);
+            
+            await interaction.editReply({ 
+                content: '✅ Your download is ready!',
+                embeds: [embed], 
+                components: [row],
+                files: [attachment]
+            });
+            
+            // Clean up the file after sending (optional, comment out if you want to keep files)
+            setTimeout(() => {
+                try {
+                    if (fs.existsSync(filepath)) {
+                        fs.unlinkSync(filepath);
+                        console.log(`Cleaned up downloaded file: ${filename}`);
+                    }
+                } catch (error) {
+                    console.log(`Failed to clean up file ${filename}:`, error.message);
+                }
+            }, 30000); // Delete after 30 seconds
+            
+        } catch (error) {
+            console.error('Download error:', error);
+            
+            // Show error message without external fallbacks
+            const embed = new EmbedBuilder()
+                .setColor('#FF6B6B')
+                .setTitle('📥 Download Failed')
+                .setDescription(`Failed to download **${currentSong.title}** directly.`)
+                .addFields(
+                    { name: '❌ Error', value: `\`\`\`${error.message}\`\`\`` },
+                    { name: '🎵 Song', value: `\`\`\`${currentSong.title}\`\`\`` },
+                    { name: '📺 Channel', value: `\`\`\`${currentSong.channel}\`\`\``, inline: true }
+                )
+                .setThumbnail(currentSong.thumbnail)
+                .setFooter({ text: `Requested by ${interaction.user.tag} | Try again later | ${BOT_VERSION}` })
+                .setTimestamp();
+            
+            await interaction.editReply({ 
+                content: '',
+                embeds: [embed]
+            });
+        }
+    }
+    
+    // Handle button interactions for download
+    async handleButtonInteraction(interaction) {
+        if (interaction.customId.startsWith('download_song_')) {
+            // Extract guild ID from custom ID
+            const guildId = interaction.customId.replace('download_song_', '');
+            
+            // Set the guild ID for the interaction if it matches
+            if (interaction.guildId === guildId) {
+                await this.downloadCurrentSong(interaction);
+            } else {
+                await interaction.reply({
+                    content: '❌ This download button is not valid for this server.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
         }
     }
 }
 
-/*Im new to using "Singleton" so im gonna leave a note of what it does.
-
-Singleton is a design pattern that restricts the instantiation of a class to one object.
-This is useful when exactly one object is needed to coordinate actions across the system.
-The concept is sometimes generalized to systems that operate more efficiently when only 
-one object exists, or that restrict the instantiation to a certain number of objects.*/
+// Singleton pattern - create a single instance
 const musicManager = new MusicManager();
+
+// Initialize YouTube Mix cache cleaning
+const { setupCacheCleaning } = require('./YouTubeMixIntegration');
+setupCacheCleaning();
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -723,13 +983,14 @@ module.exports = {
             {name: 'Skip', value: 'skip'},
             {name: 'Stop', value: 'stop'},
             {name: 'Queue', value: 'queue'},
+            {name: 'Download Current Song', value: 'download'},
             {name: 'Leave', value: 'leave'}
         )
         .setRequired(true)
     )
     .addStringOption(option => 
         option.setName('url')
-        .setDescription('YouTube URL (video, playlist, or mix)')
+        .setDescription('YouTube URL (video, playlist, or mix - ytpl will auto-detect)')
         .setRequired(false)
     ),
 
@@ -760,6 +1021,9 @@ module.exports = {
                 case 'queue': 
                     await musicManager.queue(interaction);
                     break;
+                case 'download':
+                    await musicManager.downloadCurrentSong(interaction);
+                    break;
                 case 'leave':
                     await musicManager.leave(interaction);
                     break;
@@ -771,5 +1035,10 @@ module.exports = {
     },
     
     // Export the music manager instance for web dashboard access
-    musicManager: musicManager
+    musicManager: musicManager,
+    
+    // Handle button interactions
+    handleButtonInteraction: async (interaction) => {
+        return await musicManager.handleButtonInteraction(interaction);
+    }
 }

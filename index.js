@@ -1,5 +1,5 @@
 const fs = require('fs'); // File System Module
-const {Client, Events, GatewayIntentBits, Collection, ActivityType, EmbedBuilder} = require('discord.js');
+const {Client, Events, GatewayIntentBits, Collection, ActivityType, EmbedBuilder, MessageFlags} = require('discord.js');
 const {getVoiceConnection} = require('@discordjs/voice');
 const client = new Client ({intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent], disableMentions: "all"});
 const path = require('path');
@@ -50,8 +50,8 @@ app.get('/', (req, res) => {
 
 // Start Server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`[WEBGUI - SERVER] Server is running on http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[WEBGUI - SERVER] Server is running on 0.0.0.0:${PORT}`);
 });
 
 // Websocket Connection
@@ -283,6 +283,28 @@ client.on(Events.MessageCreate, async message => {
 // Interaction Handler
 // Interaction Handler
 client.on(Events.InteractionCreate, async interaction => {
+    // Handle button interactions
+    if (interaction.isButton()) {
+        // Check if it's a download button
+        if (interaction.customId.startsWith('download_song_')) {
+            const musicCommand = client.commands.get('play-music');
+            if (musicCommand && musicCommand.musicManager) {
+                try {
+                    await musicCommand.musicManager.handleButtonInteraction(interaction);
+                } catch(error) {
+                    customLogger.error(`[ERROR - BUTTON INTERACTION] ${error}`);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '❌ An error occurred while processing the download.',
+                            flags: MessageFlags.Ephemeral
+                        });
+                    }
+                }
+            }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -326,12 +348,24 @@ global.reportLog = (log, context = 'General', module = 'Unknown') => {
 
 // Error on Unhandled Rejection
 process.on('unhandledRejection', error => {
-    customLogger.error(`[ERROR - UNHANDLED REJECTION] ${error}`);
+    // Don't log aborted errors as they're normal for voice streams
+    if (error.message && error.message.includes('aborted')) {
+        console.log('[INFO] Stream operation aborted (normal for voice connections)');
+    } else {
+        customLogger.error(`[ERROR - UNHANDLED REJECTION] ${error}`);
+    }
 });
 
 // Error on Uncaught Exception
 process.on('uncaughtException', error => {
-    customLogger.error(`[ERROR - UNCAUGHT EXCEPTION] ${error}`);
+    // Don't crash on aborted errors
+    if (error.message && error.message.includes('aborted')) {
+        console.log('[INFO] Stream operation aborted (normal for voice connections)');
+    } else {
+        customLogger.error(`[ERROR - UNCAUGHT EXCEPTION] ${error}`);
+        // Only exit on serious errors, not aborted streams
+        process.exit(1);
+    }
 });
 
 //Bot Login

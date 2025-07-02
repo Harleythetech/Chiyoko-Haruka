@@ -250,7 +250,7 @@ function updateMusicPlayer(musicData) {
         // Update thumbnail only if changed
         const thumbnail = document.getElementById('musicThumbnail');
         if (currentSong.image) {
-            const newThumbnailSrc = `https://i3.ytimg.com/vi/${currentSong.image}/hqdefault.jpg`;
+            const newThumbnailSrc = `https://i.ytimg.com/vi/${currentSong.image}/maxresdefault.jpg`;
             if (thumbnail.src !== newThumbnailSrc) {
                 thumbnail.src = newThumbnailSrc;
             }
