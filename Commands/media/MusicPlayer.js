@@ -4,8 +4,8 @@ const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerSta
 const {BOT_VERSION} = require('../../handlers/config.json');
 const ytdl = require('@distube/ytdl-core');
 const ytpl = require('@distube/ytpl');
-const { mixHandler, handleYouTubeMix } = require('./YouTubeMixIntegration');
-const VideoInfoExtractor = require('./VideoInfoExtractor');
+const { mixHandler, handleYouTubeMix } = require('./modules/YouTubeMixIntegration');
+const VideoInfoExtractor = require('./modules/VideoInfoExtractor');
 const fs = require('fs');
 const path = require('path');
 
