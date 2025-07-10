@@ -1,4 +1,5 @@
 const fs = require('fs'); // File System Module
+const os = require('os'); // Operating System Module for hostname detection
 const {Client, Events, GatewayIntentBits, Collection, ActivityType, EmbedBuilder, MessageFlags} = require('discord.js');
 const {getVoiceConnection} = require('@discordjs/voice');
 const client = new Client ({intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildPresences, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent], disableMentions: "all"});
@@ -7,7 +8,6 @@ const folderPath = path.join(__dirname, 'Commands');
 const commandFolders = fs.readdirSync(folderPath);
 const {active, bug} = require('./handlers/embed.js');
 require('dotenv').config();
-const sdp = require("stop-discord-phishing");
 const config = require('./handlers/config.json')
 
 // New dependencies for monitoring
@@ -27,7 +27,7 @@ function getMusicManager() {
             // Access the singleton instance from the module
             musicManager = require('./Commands/media/MusicPlayer.js');
         } catch (error) {
-            console.log('[WEBGUI] Music manager not available');
+            customLogger.Error('[WEBGUI] Music manager not available');
         }
     }
     return musicManager;
@@ -43,6 +43,12 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'WEBGUI/views'));
 app.use(express.static(path.join(__dirname, 'WEBGUI/public')));
 
+// Serve Bootstrap and Bootstrap Icons locally for better performance
+app.use('/bootstrap.min.css', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/css/bootstrap.min.css')));
+app.use('/bootstrap.bundle.min.js', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/js/bootstrap.bundle.min.js')));
+app.use('/bootstrap-icons.css', express.static(path.join(__dirname, 'node_modules/bootstrap-icons/font/bootstrap-icons.min.css')));
+app.use('/fonts', express.static(path.join(__dirname, 'node_modules/bootstrap-icons/font/fonts')));
+
 // Serve Dashboard
 app.get('/', (req, res) => {
     res.render('index');
@@ -56,8 +62,39 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // Websocket Connection
 io.on('connection', (socket) => {
+    
     io.emit('version', config.BOT_VERSION);
     io.emit('clientid', socket.id);
+    
+    // Send system hostname to dashboard
+    const systemHostname = os.hostname();
+    const networkInterfaces = os.networkInterfaces();
+    
+    
+    // Get the primary IP address (prefer non-loopback IPv4)
+    let primaryIP = '127.0.0.1';
+    for (const interfaceName in networkInterfaces) {
+        const addresses = networkInterfaces[interfaceName];
+        for (const addr of addresses) {
+            if (addr.family === 'IPv4' && !addr.internal) {
+                primaryIP = addr.address;
+                break;
+            }
+        }
+        if (primaryIP !== '127.0.0.1') break;
+    }
+    
+    
+    // Send host information to the connected client
+    const hostInfo = {
+        hostname: systemHostname,
+        ip: primaryIP,
+        platform: os.platform(),
+        arch: os.arch()
+    };
+    
+    socket.emit('hostInfo', hostInfo);
+
 })
 
 
@@ -108,13 +145,36 @@ function monitorResources() {
                 return;
             }
 
-            // Convert memory to percentage (assuming 16GB max RAM as example)
+            // Enhanced system information
             const cpuPercent = stats.cpu.toFixed(1);
-            const memoryPercent = Math.min((stats.memory / (1 * 1024 * 1024 * 1024)) * 100, 100).toFixed(1);
+            const memoryBytes = stats.memory;
+            const memoryMB = (memoryBytes / (1024 * 1024)).toFixed(1);
+            const memoryPercent = Math.min((memoryBytes / (1 * 1024 * 1024 * 1024)) * 100, 100).toFixed(1);
+            
+            const systemInfo = {
+                cpu: cpuPercent,
+                memory: {
+                    percent: memoryPercent,
+                    used: memoryMB,
+                    bytes: memoryBytes
+                },
+                uptime: formatRuntime(stats.elapsed),
+                process: {
+                    pid: process.pid,
+                    version: process.version,
+                    platform: process.platform,
+                    arch: process.arch,
+                    startTime: new Date(Date.now() - stats.elapsed).toLocaleString()
+                }
+            };
+            
+            io.emit('ResourceUsage', systemInfo);
+            
+            // Also emit the legacy format for backward compatibility
             const ProcD = [cpuPercent, memoryPercent, formatRuntime(stats.elapsed)];
-            io.emit('ResourceUsage', ProcD);
+            io.emit('ResourceUsageLegacy', ProcD);
         });
-    }, 100);
+    }, 2000); // Reduced frequency for better performance
 }
 
 // Music Monitoring
@@ -254,39 +314,12 @@ client.on(Events.ClientReady, c => {
     monitorMusic();
 });
 
-// Message With Link detection and Scam Detection powered by Stop Discord Phishing
-client.on(Events.MessageCreate, async message => {
-    const userlink = message.content;
-    const urlRegex = /((https?:\/\/|ftp:\/\/|sftp:\/\/|file:\/\/|gopher:\/\/|telnet:\/\/|nntp:\/\/|imap:\/\/|wais:\/\/|mailto:|news:|rtsp:\/\/|svn:\/\/|git:\/\/|ssh:\/\/|rsync:\/\/|www\.)[\w\-]+(\.[\w\-]+)+[#?/\w\-=&.%]*)|[\w\-]+\.[a-zA-Z]{2,}(\/[#?/\w\-=&.%]*)?/gi;
-    const urlraw = userlink.match(urlRegex);
-    
-    if (urlraw != null) {
-        for (const url of urlraw) {
-            // Normalize URL if it starts with www.
-            const normalizedUrl = url.startsWith('www.') ? `https://${url}` : url;
-            
-            const data = await sdp.checkMessage(normalizedUrl, true);
-            if (data == true) {
-                const embed = new EmbedBuilder()
-                    .setTitle('Danger: Scam Link Detected')
-                    .setDescription(`Phishing Link detected, message automatically deleted for your safety.`)
-                    .setColor(0xff0000)
-                    .setImage('https://media.tenor.com/ayZKpLp26ZkAAAAd/this-is-dangerous.gif');
-                
-                await message.channel.send({ embeds: [embed] });
-                await message.delete();
-            }
-        }
-    }
-});
-
-// Interaction Handler
 // Interaction Handler
 client.on(Events.InteractionCreate, async interaction => {
     // Handle button interactions
     if (interaction.isButton()) {
-        // Check if it's a download button
-        if (interaction.customId.startsWith('download_song_')) {
+        // Check if it's any music-related button (download or media controls)
+        if (interaction.customId.startsWith('download_song_') || interaction.customId.startsWith('music_')) {
             const musicCommand = client.commands.get('play-music');
             if (musicCommand && musicCommand.musicManager) {
                 try {
@@ -295,7 +328,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     customLogger.error(`[ERROR - BUTTON INTERACTION] ${error}`);
                     if (!interaction.replied && !interaction.deferred) {
                         await interaction.reply({
-                            content: '❌ An error occurred while processing the download.',
+                            content: '❌ An error occurred while processing your request.',
                             flags: MessageFlags.Ephemeral
                         });
                     }
@@ -350,7 +383,7 @@ global.reportLog = (log, context = 'General', module = 'Unknown') => {
 process.on('unhandledRejection', error => {
     // Don't log aborted errors as they're normal for voice streams
     if (error.message && error.message.includes('aborted')) {
-        console.log('[INFO] Stream operation aborted (normal for voice connections)');
+        customLogger.warn('[INFO] Stream operation aborted (normal for voice connections)');
     } else {
         customLogger.error(`[ERROR - UNHANDLED REJECTION] ${error}`);
     }
@@ -360,7 +393,7 @@ process.on('unhandledRejection', error => {
 process.on('uncaughtException', error => {
     // Don't crash on aborted errors
     if (error.message && error.message.includes('aborted')) {
-        console.log('[INFO] Stream operation aborted (normal for voice connections)');
+        customLogger.warn('[INFO] Stream operation aborted (normal for voice connections)');
     } else {
         customLogger.error(`[ERROR - UNCAUGHT EXCEPTION] ${error}`);
         // Only exit on serious errors, not aborted streams

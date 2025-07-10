@@ -1,724 +1,375 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
     <title>Chiyoko Haruka | Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/bootstrap.min.css">
+    <link rel="stylesheet" href="/bootstrap-icons.css">
     <link rel="stylesheet" href="/styles.css">
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body>
+<body class="d-flex flex-column" style="min-height: 100vh;">
+    <!-- Main Navigation -->
+    <nav class="navbar navbar-expand-lg sticky-top glass-nav bg-body-tertiary bg-opacity-75 shadow-sm">
+        <div class="container-fluid px-5">
+            <div class="navbar-brand d-flex align-items-center">
+                <div>
+                    <div class="fw-semibold fs-5">Chiyoko Haruka</div>
+                    <span class="badge bg-primary bg-opacity-25 text-primary rounded-pill px-3" style="font-size: 0.75rem;" id="ver_webgui">v1.0.0</span>
+                </div>
+            </div>
+            
+            <div class="d-flex align-items-center gap-3">
+                <!-- Theme Toggle -->
+                <button class="btn btn-outline-secondary btn-sm rounded-2 px-3" id="themeToggle" type="button">
+                    <i class="bi bi-moon-fill theme-icon-dark"></i>
+                    <i class="bi bi-sun-fill theme-icon-light d-none"></i>
+                </button>
+                
+                <!-- Refresh Button -->
+                <button class="btn btn-outline-primary btn-sm rounded-2 px-3" id="refreshBtn" type="button">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
 
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-lg">
-        <div class="container-fluid">
-          <a class="navbar-brand fw-bold d-flex align-items-center" href="#">
-            Chiyoko Haruka | Dashboard
-          </a>
-          <div class="d-flex align-items-center">
-            <span class="badge bg-success me-2" id="ver_webgui">v1.0.0</span>
-            <span class="text-light me-2">|</span>
-            <small class="text-light" id="session_ID">Session ID</small>
-            <button class="btn btn-outline-light btn-sm ms-3" id="refreshBtn">
-                <i class="bi bi-arrow-clockwise"></i>
-            </button>
-          </div>
+                <div class="d-none d-lg-flex align-items-center bg-body-secondary bg-opacity-50 rounded-2 px-3 py-2 glass-effect border border-opacity-25">
+                    <div class="text-end me-2 d-flex">
+                        <div class="fw-medium small me-2" id="hostName">---</div>
+                        <div class="text-muted small me-2">|</div>
+                        <div class="text-muted small me-2" id="hostIP">---.---.---.---</div>
+                        <div class="text-muted small me-2">|</div>
+                        <div class="text-muted small" id="hostPort">----</div>
+                    </div>
+                    <div class="bg-success rounded rounded-1" style="width: 8px; height: 8px;"></div>
+                </div>
+            </div>
         </div>
     </nav>
 
-    <!-- Bot Status Hero Section -->
-    <section class="container-fluid mt-4">
+    <!-- Main Content -->
+    <main class="container-fluid p-4">
+        <!-- Status Cards Row -->
+        <div class="row g-4 mb-4">
+            <!-- Bot Status -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card h-100 bg-body-secondary bg-opacity-50 border-0 glass-effect">
+                    <div class="card-body d-flex align-items-center p-4">
+                        <div class="bg-success bg-opacity-25 text-success rounded-3 p-3 me-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-robot fs-4"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="text-muted small fw-medium mb-1">Bot Status</div>
+                            <div class="fs-4 fw-semibold" id="botStatus">Online</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Servers -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card h-100 bg-body-secondary bg-opacity-50 border-0 glass-effect">
+                    <div class="card-body d-flex align-items-center p-4">
+                        <div class="bg-primary bg-opacity-25 text-primary rounded-3 p-3 me-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-buildings fs-4"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="text-muted small fw-medium mb-1">Servers</div>
+                            <div class="fs-4 fw-semibold" id="guildCount">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card h-100 bg-body-secondary bg-opacity-50 border-0 glass-effect">
+                    <div class="card-body d-flex align-items-center p-4">
+                        <div class="bg-info bg-opacity-25 text-info rounded-3 p-3 me-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-people fs-4"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="text-muted small fw-medium mb-1">Users</div>
+                            <div class="fs-4 fw-semibold" id="userCount">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ping -->
+            <div class="col-sm-6 col-lg-3">
+                <div class="card h-100 bg-body-secondary bg-opacity-50 border-0 glass-effect">
+                    <div class="card-body d-flex align-items-center p-4">
+                        <div class="bg-warning bg-opacity-25 text-warning rounded-3 p-3 me-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                            <i class="bi bi-wifi fs-4"></i>
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="text-muted small fw-medium mb-1">Ping</div>
+                            <div class="fs-4 fw-semibold" id="ping">0ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Row -->
         <div class="row g-4">
-            <div class="col-12">
-                <div class="card bg-dark border-0 shadow-lg">
+            <!-- Music Player Section -->
+            <div class="col-lg-8">
+                <div class="card bg-body-secondary bg-opacity-50 border-0 glass-effect h-100 d-flex flex-column">
+                    <div class="card-header bg-transparent border-bottom border-opacity-25 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-music-note-list me-2 text-primary"></i>
+                            <h5 class="mb-0 fw-semibold">Active Music Sessions</h5>
+                        </div>
+                        <span class="badge bg-primary bg-opacity-25 text-primary rounded-pill" id="activeMusicCount">0</span>
+                    </div>
+                    <div class="card-body p-4 flex-grow-1 d-flex flex-column">
+                        <!-- No Music State -->
+                        <div id="noMusicState" class="text-center py-5 flex-grow-1 d-flex flex-column justify-content-center">
+                            <div class="mb-3">
+                                <i class="bi bi-music-note-beamed text-muted opacity-50" style="font-size: 4rem;"></i>
+                            </div>
+                            <h6 class="text-muted mb-2">No Active Music Sessions</h6>
+                            <p class="text-muted small mb-0">Music sessions will appear here when users are listening</p>
+                        </div>
+
+                        <!-- Music Sessions Container -->
+                        <div id="musicSessions" class="d-none flex-grow-1">
+                            <!-- Music sessions will be dynamically inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Monitoring -->
+            <div class="col-lg-4">
+                <div class="card bg-body-secondary bg-opacity-50 border-0 glass-effect h-100">
+                    <div class="card-header bg-transparent border-bottom border-opacity-25 d-flex align-items-center">
+                        <i class="bi bi-cpu me-2 text-success"></i>
+                        <h5 class="mb-0 fw-semibold">System Monitor</h5>
+                    </div>
                     <div class="card-body p-4">
-                        <div class="row align-items-center">
-                            <div class="col-md-8">
-                                <div class="d-flex align-items-center">
-                                    <div class="position-relative">
-                                        <img src="https://camo.githubusercontent.com/80849d1d9aac9ed16c9496028d9f5a6fc3dff675d9225e83275dae7e78bb574a/68747470733a2f2f692e696d6775722e636f6d2f6d774f4643424f2e706e67" 
-                                             alt="Chiyoko Haruka" class="rounded-circle shadow" width="125" height="120">
-                                        <span class="position-absolute bottom-0 end-0 badge rounded-pill bg-success p-2">
-                                            <i class="bi bi-circle-fill"></i>
-                                        </span>
-                                    </div>
-                                    <div class="ms-4 text-white">
-                                        <h1 class="fw-bold mb-1">Chiyoko Haruka</h1>
-                                        <p class="text-light mb-3">Advanced Discord Bot with Premium Features</p>
-                                        <div class="d-flex gap-3">
-                                            <span class="badge bg-primary px-3 py-2">
-                                                <i class="bi bi-shield-check me-1"></i>
-                                                Verified
-                                            </span>
-                                            <span class="badge bg-warning text-dark px-3 py-2">
-                                                <i class="bi bi-star-fill me-1"></i>
-                                                Premium
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="text-end">
-                                    <div class="d-flex justify-content-end align-items-center mb-3">
-                                        <h5 class="text-white me-3 mb-0">Status:</h5>
-                                        <h4 id="status" class="mb-0">
-                                            <span class="badge bg-secondary">---</span>
-                                        </h4>
-                                    </div>
-                                    <div class="row text-center">
-                                        <div class="col-6">
-                                            <div class="bg-primary bg-opacity-10 rounded p-3">
-                                                <h3 class="text-primary mb-1" id="guildSize">0</h3>
-                                                <small class="text-light">Servers</small>
-                                            </div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="bg-success bg-opacity-10 rounded p-3">
-                                                <h3 class="text-success mb-1" id="usersCount">0</h3>
-                                                <small class="text-light">Users</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    <!-- Analytics and System Info -->
-    <section class="container-fluid mt-4">
-        <div class="row g-4">
-            <!-- Ping Chart -->
-            <div class="col-lg-6">
-                <div class="card bg-dark border-0 shadow-lg h-100">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <h4 class="text-white mb-1">
-                                    <i class="bi bi-activity text-info me-2"></i>
-                                    Network Latency
-                                </h4>
-                                <small class="text-light">Real-time ping monitoring</small>
-                            </div>
-                            <div class="text-end">
-                                <div class="badge bg-info text-dark" id="currentPing">-- ms</div>
-                                <div class="small text-light mt-1">discord.com/api/v10</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <canvas id="ping_chart" style="max-height: 200px;"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- System Resources -->
-            <div class="col-lg-6">
-                <div class="card bg-dark border-0 shadow-lg h-100">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-cpu text-warning me-2"></i>
-                            System Performance
-                        </h4>
-                        <small class="text-light">Real-time resource monitoring</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="text-white">
-                                        <i class="bi bi-cpu-fill text-warning me-2"></i>
-                                        CPU Usage
-                                    </span>
-                                    <span class="badge bg-warning text-dark" id="cpuPercent">0%</span>
-                                </div>
-                                <div class="progress" style="height: 8px;">
-                                    <div class="progress-bar bg-warning" id="cpu" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="text-white">
-                                        <i class="bi bi-memory text-info me-2"></i>
-                                        Memory Usage
-                                    </span>
-                                    <span class="badge bg-info text-dark" id="memoryPercent">0%</span>
-                                </div>
-                                <div class="progress" style="height: 8px;">
-                                    <div class="progress-bar bg-info" id="memory" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <div class="bg-dark bg-opacity-50 rounded p-3 mt-3">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span class="text-white">
-                                            <i class="bi bi-clock text-success me-2"></i>
-                                            Uptime
-                                        </span>
-                                        <span class="text-success fw-bold" id="runtime">0s</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Music Player Section -->
-    <section class="container-fluid mt-4">
-        <div class="row g-4">
-            <div class="col-12">
-                <div class="card bg-dark border-0 shadow-lg">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="text-white mb-0">
-                                <i class="bi bi-music-note-beamed text-primary me-2"></i>
-                                Now Playing
-                            </h4>
-                            <div class="d-flex align-items-center">
-                                <span class="badge bg-primary me-2" id="activePlayersCount">0 Active Players</span>
-                                <small class="text-light">
-                                    <i class="bi bi-broadcast-pin text-success"></i>
-                                    Live
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div id="musicPlayerContainer">
-                            <!-- No Music Playing State -->
-                            <div id="noMusicState" class="text-center py-5">
-                                <i class="bi bi-music-note-list text-light" style="font-size: 4rem;"></i>
-                                <h5 class="text-light mt-3">No Music Currently Playing</h5>
-                                <p class="text-light">Waiting for music to start in any server...</p>
-                            </div>
-                            
-                            <!-- Music Playing State -->
-                            <div id="musicPlayingState" class="d-none">
-                                <div class="row align-items-center">
-                                    <div class="col-md-3">
-                                        <div class="position-relative">
-                                            <img id="musicThumbnail" 
-                                                 src="" 
-                                                 alt="Song Thumbnail" 
-                                                 class="img-fluid rounded shadow" 
-                                                 style="width: 100%; max-width: 200px; aspect-ratio: 16/9;">
-                                            <div class="position-absolute top-0 start-0 badge bg-success m-2">
-                                                <i class="bi bi-play-fill"></i>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="music-info">
-                                            <h5 class="text-white mb-2" id="musicTitle">Song Title</h5>
-                                            <p class="text-light mb-2" id="musicArtist">Artist Name</p>
-                                            <div class="d-flex align-items-center mb-3">
-                                                <i class="bi bi-server text-primary me-2"></i>
-                                                <span class="text-light" id="musicServer">Server Name</span>
-                                            </div>
-                                            <div class="d-flex align-items-center mb-2">
-                                                <i class="bi bi-person text-success me-2"></i>
-                                                <span class="text-light">Requested by: <span id="musicRequestedBy">Username</span></span>
-                                            </div>
-                                            <div class="progress" style="height: 4px;">
-                                                <div class="progress-bar bg-primary" 
-                                                     id="musicProgress" 
-                                                     role="progressbar" 
-                                                     style="width: 0%">
-                                                </div>
-                                            </div>
-                                            <div class="d-flex justify-content-between mt-1">
-                                                <small class="text-light" id="musicCurrentTime">0:00</small>
-                                                <small class="text-light" id="musicDuration">0:00</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="music-controls text-center">
-                                            <div class="mb-3">
-                                                <a id="musicYoutubeLink" 
-                                                   href="#" 
-                                                   target="_blank" 
-                                                   class="btn btn-danger btn-sm">
-                                                    <i class="bi bi-youtube me-1"></i>
-                                                    Watch on YouTube
-                                                </a>
-                                            </div>
-                                            <div class="music-stats">
-                                                <div class="row g-2">
-                                                    <div class="col-6">
-                                                        <div class="bg-primary bg-opacity-10 rounded p-2">
-                                                            <div class="text-primary fw-bold" id="queueCount">0</div>
-                                                            <small class="text-light">Queue</small>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-6">
-                                                        <div class="bg-success bg-opacity-10 rounded p-2">
-                                                            <div class="text-success fw-bold" id="voiceUsers">0</div>
-                                                            <small class="text-light">Listeners</small>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Bot Information & Commands -->
-    <section class="container-fluid mt-4">
-        <div class="row g-4">
-            <!-- Bot Information -->
-            <div class="col-lg-4">
-                <div class="card bg-dark border-0 shadow-lg h-100">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-info-circle text-primary me-2"></i>
-                            Bot Information
-                        </h4>
-                        <small class="text-light">System details and configuration</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                    <span class="text-light">
-                                        <i class="bi bi-calendar3 me-2"></i>
-                                        Created
-                                    </span>
-                                    <span class="text-white fw-medium" id="botCreated">Loading...</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                    <span class="text-light">
-                                        <i class="bi bi-code-slash me-2"></i>
-                                        Language
-                                    </span>
-                                    <span class="text-white fw-medium">Node.js</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                    <span class="text-light">
-                                        <i class="bi bi-hdd me-2"></i>
-                                        Database
-                                    </span>
-                                    <span class="text-white fw-medium" id="dbStatus">SQLite</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                    <span class="text-light">
-                                        <i class="bi bi-shield-check me-2"></i>
-                                        Permissions
-                                    </span>
-                                    <span class="badge bg-success">Administrator</span>
-                                </div>
-                                <div class="d-flex justify-content-between align-items-center py-2">
-                                    <span class="text-light">
-                                        <i class="bi bi-globe me-2"></i>
-                                        Hosting
-                                    </span>
-                                    <span class="text-white fw-medium" id="hostingInfo">Local Server</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Available Commands -->
-            <div class="col-lg-4">
-                <div class="card bg-dark border-0 shadow-lg h-100">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-terminal text-success me-2"></i>
-                            Command Categories
-                        </h4>
-                        <small class="text-light">Available bot commands</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <div class="bg-primary bg-opacity-10 rounded p-3 text-center">
-                                    <i class="bi bi-music-note-beamed text-primary fs-3"></i>
-                                    <div class="mt-2">
-                                        <div class="text-primary fw-bold" id="musicCommands">5</div>
-                                        <small class="text-light">Music</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-success bg-opacity-10 rounded p-3 text-center">
-                                    <i class="bi bi-tools text-success fs-3"></i>
-                                    <div class="mt-2">
-                                        <div class="text-success fw-bold" id="utilityCommands">8</div>
-                                        <small class="text-light">Utility</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-warning bg-opacity-10 rounded p-3 text-center">
-                                    <i class="bi bi-people text-warning fs-3"></i>
-                                    <div class="mt-2">
-                                        <div class="text-warning fw-bold" id="moderationCommands">12</div>
-                                        <small class="text-light">Moderation</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-6">
-                                <div class="bg-info bg-opacity-10 rounded p-3 text-center">
-                                    <i class="bi bi-controller text-info fs-3"></i>
-                                    <div class="mt-2">
-                                        <div class="text-info fw-bold" id="funCommands">6</div>
-                                        <small class="text-light">Fun</small>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Server Overview -->
-            <div class="col-lg-4">
-                <div class="card bg-dark border-0 shadow-lg h-100">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-server text-warning me-2"></i>
-                            Server Overview
-                        </h4>
-                        <small class="text-light">Top servers by activity</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <span class="text-light">Most Active Server</span>
-                            <span class="badge bg-primary" id="topServer">Loading...</span>
-                        </div>
-                        <div class="mb-3">
+                        <!-- CPU Usage -->
+                        <div class="mb-4">
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <small class="text-light">Server Distribution</small>
-                                <small class="text-light" id="serverDistribution">0 regions</small>
+                                <span class="small fw-medium text-muted">CPU Usage</span>
+                                <span class="small fw-semibold" id="cpuValue">0%</span>
                             </div>
-                            <div class="progress" style="height: 6px;">
-                                <div class="progress-bar bg-primary" style="width: 40%"></div>
-                                <div class="progress-bar bg-success" style="width: 30%"></div>
-                                <div class="progress-bar bg-warning" style="width: 20%"></div>
-                                <div class="progress-bar bg-info" style="width: 10%"></div>
-                            </div>
-                            <div class="d-flex justify-content-between mt-2">
-                                <small class="text-primary">US</small>
-                                <small class="text-success">EU</small>
-                                <small class="text-warning">AS</small>
-                                <small class="text-info">OTHER</small>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-success" id="cpuProgress" style="width: 0%"></div>
                             </div>
                         </div>
-                        <div class="row g-2">
-                            <div class="col-6">
-                                <div class="text-center">
-                                    <div class="text-success fw-bold fs-5" id="largestServer">0</div>
-                                    <small class="text-light">Largest Server</small>
-                                </div>
+
+                        <!-- Memory Usage -->
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-medium text-muted">Memory Usage</span>
+                                <span class="small fw-semibold" id="memoryValue">0%</span>
                             </div>
-                            <div class="col-6">
-                                <div class="text-center">
-                                    <div class="text-primary fw-bold fs-5" id="avgMembers">0</div>
-                                    <small class="text-light">Avg Members</small>
-                                </div>
+                            <div class="progress" style="height: 8px;">
+                                <div class="progress-bar bg-info" id="memoryProgress" style="width: 0%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted small mt-1">
+                                <span id="memoryUsed">0 MB</span>
+                                <span id="memoryTotal">0 MB</span>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
 
-    <!-- Quick Stats -->
-    <section class="container-fluid mt-4">
-        <div class="row g-4">
-            <div class="col-md-3 col-sm-6">
-                <div class="card bg-gradient border-0 shadow-sm" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <div class="card-body text-center text-white p-4">
-                        <i class="bi bi-graph-up-arrow display-4 mb-3"></i>
-                        <h3 class="fw-bold mb-1" id="commandsToday">0</h3>
-                        <p class="mb-0 opacity-75">Commands Today</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="card bg-gradient border-0 shadow-sm" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
-                    <div class="card-body text-center text-white p-4">
-                        <i class="bi bi-people-fill display-4 mb-3"></i>
-                        <h3 class="fw-bold mb-1" id="activeUsers">0</h3>
-                        <p class="mb-0 opacity-75">Active Users</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="card bg-gradient border-0 shadow-sm" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
-                    <div class="card-body text-center text-white p-4">
-                        <i class="bi bi-hdd-stack-fill display-4 mb-3"></i>
-                        <h3 class="fw-bold mb-1" id="totalCommands">0</h3>
-                        <p class="mb-0 opacity-75">Total Commands</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="card bg-gradient border-0 shadow-sm" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
-                    <div class="card-body text-center text-white p-4">
-                        <i class="bi bi-speedometer2 display-4 mb-3"></i>
-                        <h3 class="fw-bold mb-1" id="avgResponseTime">0ms</h3>
-                        <p class="mb-0 opacity-75">Avg Response</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- System Health & Recent Activity -->
-    <section class="container-fluid mt-4">
-        <div class="row g-4">
-            <!-- System Health -->
-            <div class="col-lg-6">
-                <div class="card bg-dark border-0 shadow-lg">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-heart-pulse text-danger me-2"></i>
-                            System Health
-                        </h4>
-                        <small class="text-light">Real-time system monitoring</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="bg-success bg-opacity-10 rounded p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            <i class="bi bi-check-circle text-success fs-4"></i>
-                                            <div class="mt-2">
-                                                <div class="text-success fw-bold">Healthy</div>
-                                                <small class="text-light">API Status</small>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="badge bg-success" id="apiUptime">99.9%</div>
+                        <!-- Process Information -->
+                        <div class="mb-4">
+                            <div class="bg-body bg-opacity-50 rounded-3 p-3">
+                                <div class="row g-2">
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="text-primary fs-6 fw-bold" id="processId">0</div>
+                                            <div class="small text-muted">Process ID</div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="bg-info bg-opacity-10 rounded p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            <i class="bi bi-database text-info fs-4"></i>
-                                            <div class="mt-2">
-                                                <div class="text-info fw-bold">Active</div>
-                                                <small class="text-light">Database</small>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="badge bg-info text-dark" id="dbLatency">2ms</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="bg-warning bg-opacity-10 rounded p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            <i class="bi bi-thermometer-half text-warning fs-4"></i>
-                                            <div class="mt-2">
-                                                <div class="text-warning fw-bold" id="temperature">45°C</div>
-                                                <small class="text-light">CPU Temp</small>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="badge bg-success">Normal</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="bg-primary bg-opacity-10 rounded p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            <i class="bi bi-wifi text-primary fs-4"></i>
-                                            <div class="mt-2">
-                                                <div class="text-primary fw-bold">Stable</div>
-                                                <small class="text-light">Connection</small>
-                                            </div>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="badge bg-primary" id="connectionQuality">Excellent</div>
+                                    <div class="col-6">
+                                        <div class="text-center">
+                                            <div class="text-info fs-6 fw-bold" id="threadCount">1</div>
+                                            <div class="small text-muted">Threads</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Recent Activity -->
-            <div class="col-lg-6">
-                <div class="card bg-dark border-0 shadow-lg">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <h4 class="text-white mb-1">
-                            <i class="bi bi-activity text-success me-2"></i>
-                            Recent Activity
-                        </h4>
-                        <small class="text-light">Latest bot interactions</small>
-                    </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="activity-list" id="activityList">
-                            <div class="activity-item d-flex align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                <div class="activity-icon bg-success bg-opacity-20 rounded-circle p-2 me-3">
-                                    <i class="bi bi-person-plus text-success"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="text-white fw-medium">Bot joined new server</div>
-                                    <small class="text-light">Gaming Community • 2 minutes ago</small>
+                        <!-- Uptime -->
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-medium text-muted">Bot Uptime</span>
+                                <span class="small fw-semibold" id="uptime">00:00:00</span>
+                            </div>
+                            <div class="d-flex justify-content-between text-muted small">
+                                <span>Started:</span>
+                                <span id="startTime">Loading...</span>
+                            </div>
+                        </div>
+
+                        <!-- System Information -->
+                        <div class="mb-4">
+                            <div class="bg-body bg-opacity-50 rounded-3 p-3">
+                                <div class="row g-2 text-center">
+                                    <div class="col-4">
+                                        <div class="text-warning fs-6 fw-bold" id="nodeVersion">v0.0.0</div>
+                                        <div class="small text-muted">Node.js</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-success fs-6 fw-bold" id="platform">Unknown</div>
+                                        <div class="small text-muted">Platform</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-primary fs-6 fw-bold" id="architecture">x64</div>
+                                        <div class="small text-muted">Arch</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="activity-item d-flex align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                <div class="activity-icon bg-primary bg-opacity-20 rounded-circle p-2 me-3">
-                                    <i class="bi bi-music-note text-primary"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="text-white fw-medium">Music command executed</div>
-                                    <small class="text-light">Chill Lounge • 5 minutes ago</small>
-                                </div>
+                        </div>
+
+                        <!-- Connection Status -->
+                        <div class="border-top border-opacity-25 pt-3">
+                            <div class="d-flex align-items-center mb-2">
+                                <div class="bg-success rounded-circle me-2" style="width: 8px; height: 8px;"></div>
+                                <span class="small fw-medium text-muted">Discord Gateway</span>
+                                <span class="ms-auto badge bg-success bg-opacity-25 text-success" id="gatewayStatus">Connected</span>
                             </div>
-                            <div class="activity-item d-flex align-items-center py-2 border-bottom border-secondary border-opacity-25">
-                                <div class="activity-icon bg-warning bg-opacity-20 rounded-circle p-2 me-3">
-                                    <i class="bi bi-shield text-warning"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="text-white fw-medium">Moderation action taken</div>
-                                    <small class="text-light">Main Server • 12 minutes ago</small>
-                                </div>
-                            </div>
-                            <div class="activity-item d-flex align-items-center py-2">
-                                <div class="activity-icon bg-info bg-opacity-20 rounded-circle p-2 me-3">
-                                    <i class="bi bi-gear text-info"></i>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="text-white fw-medium">Settings updated</div>
-                                    <small class="text-light">Development Server • 28 minutes ago</small>
-                                </div>
+                            <div class="d-flex align-items-center">
+                                <div class="bg-info rounded-circle me-2" style="width: 8px; height: 8px;"></div>
+                                <span class="small fw-medium text-muted">Dashboard WebSocket</span>
+                                <span class="ms-auto badge bg-info bg-opacity-25 text-info" id="socketStatus">Connected</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- Logs Section -->
-    <section class="container-fluid mt-4">
-        <div class="row">
+        <!-- Activity Log -->
+        <div class="row g-4 mt-0">
             <div class="col-12">
-                <div class="card bg-dark border-0 shadow-lg">
-                    <div class="card-header bg-transparent border-0 p-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4 class="text-white mb-0">
-                                <i class="bi bi-terminal text-success me-2"></i>
-                                System Logs
-                            </h4>
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-outline-success btn-sm" id="clearLogs">
-                                    <i class="bi bi-trash3"></i> Clear
-                                </button>
-                                <button class="btn btn-outline-info btn-sm" id="downloadLogs">
-                                    <i class="bi bi-download"></i> Export
-                                </button>
-                            </div>
+                <div class="card bg-body-secondary bg-opacity-50 border-0 glass-effect">
+                    <div class="card-header bg-transparent border-bottom border-opacity-25 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-journal-text me-2 text-info"></i>
+                            <h5 class="mb-0 fw-semibold">Activity Log</h5>
                         </div>
+                        <button class="btn btn-outline-secondary btn-sm" id="clearLogs">
+                            <i class="bi bi-trash3"></i>
+                        </button>
                     </div>
-                    <div class="card-body p-4 pt-0">
-                        <div class="position-relative">
-                            <textarea class="form-control bg-dark text-light border-0 font-monospace" 
-                                      id="logBox" 
-                                      rows="15" 
-                                      readonly 
-                                      style="resize: vertical; font-size: 0.9rem; line-height: 1.4;"
-                                      placeholder="Waiting for system logs..."></textarea>
-                            <div class="position-absolute top-0 end-0 p-2">
-                                <small class="text-light">
-                                    <i class="bi bi-circle-fill text-success pulse"></i>
-                                    Live
-                                </small>
-                            </div>
+                    <div class="card-body p-0">
+                        <div id="logContainer" class="p-3" style="max-height: 300px; overflow-y: auto;">
+                            <!-- Log entries will be dynamically added here -->
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
+    </main>
 
     <!-- Footer -->
-    <footer class="bg-dark text-light mt-5 py-4 border-top border-secondary">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <div class="d-flex align-items-center">
-                        <i class="bi bi-github me-2 text-primary"></i>
-                        <span class="fw-semibold">Chiyoko Haruka</span>
-                    </div>
-                    <small class="text-light mt-1 d-block">
-                        Open source Discord music bot with web dashboard
-                    </small>
-                </div>
-                <div class="col-md-6 text-md-end mt-3 mt-md-0">
-                    <div class="d-flex flex-column align-items-md-end">
-                        <div class="mb-2">
-                            <a href="https://github.com/Harleythetech/Chiyoko-Haruka" 
-                               target="_blank" 
-                               class="btn btn-outline-primary btn-sm me-2">
-                                <i class="bi bi-github"></i> Project Repository
-                            </a>
+    <footer class="mt-auto">
+        <div>
+            <div class="bg-body-secondary bg-opacity-50 glass-nav">
+                <div class="card-body p-4">
+                    <div class="row align-items-center">
+                        <!-- Left Section - Branding -->
+                        <div class="col-lg-4 mb-3 mb-lg-0">
+                            <div class="d-flex align-items-center">
+                                <div>
+                                    <div class="fw-bold fs-5">Chiyoko Haruka</div>
+                                    <div class="text-muted small">A feature-packed Discord bot designed to provide a wide range of useful features and utilities to users. </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="text-light">
-                            <small>
-                                Created by <strong class="text-light">harleyyyu</strong>
-                                <span class="mx-2">•</span>
-                                <a href="https://github.com/Harleythetech" 
-                                   target="_blank" 
-                                   class="text-decoration-none text-primary">
-                                    <i class="bi bi-github"></i> GitHub
-                                </a>
-                                <span class="mx-2">•</span>
-                                <span class="text-primary">
-                                    <i class="bi bi-discord"></i> harleyyyu
-                                </span>
-                            </small>
+
+                        <!-- Center Section - Tech Stack -->
+                        <div class="col-lg-4 mb-3 mb-lg-0">
+                            <div class="text-center">
+                                <div class="text-muted small fw-medium mb-2">Built with</div>
+                                <div class="d-flex justify-content-center gap-2 flex-wrap">
+                                    <!-- Core Technologies -->
+                                    <span class="badge bg-primary bg-opacity-25 text-primary rounded-pill px-3">Node.js</span>
+                                    <span class="badge bg-success bg-opacity-25 text-success rounded-pill px-3">Express</span>
+                                    <span class="badge bg-info bg-opacity-25 text-info rounded-pill px-3">Socket.io</span>
+                                    <span class="badge bg-warning bg-opacity-25 text-warning rounded-pill px-3">Bootstrap</span>
+                                    <span class="badge bg-danger bg-opacity-25 text-danger rounded-pill px-3">PID Usage</span>
+                                </div>
+                                <div class="d-flex justify-content-center gap-2 flex-wrap mt-2">
+                                    <!-- Discord & Bot Technologies -->
+                                    <span class="badge bg-secondary bg-opacity-25 text-secondary rounded-pill px-3">Discord.js</span>
+                                    <span class="badge bg-danger bg-opacity-25 text-danger rounded-pill px-3">EJS</span>
+                                    <span class="badge bg-primary bg-opacity-25 text-primary rounded-pill px-3">YouTube API</span>
+                                    <span class="badge bg-success bg-opacity-25 text-success rounded-pill px-3">Voice</span>
+                                    <span class="badge bg-warning bg-opacity-25 text-warning rounded-pill px-3">pm2</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Section - Links & Status -->
+                        <div class="col-lg-4">
+                            <div class="row g-2">
+                                <!-- Project Links -->
+                                <div class="col-6">
+                                    <div class="text-center">
+                                        <div class="text-muted small fw-medium mb-2">Project</div>
+                                        <div class="d-flex flex-column gap-1">
+                                            <a href="https://github.com/Harleythetech/Chiyoko-Haruka" target="_blank" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                                                <i class="bi bi-github me-1"></i> Repository
+                                            </a>
+                                            <a href="https://github.com/Harleythetech/Chiyoko-Haruka/issues" target="_blank" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                                                <i class="bi bi-bug me-1"></i> Report Issues
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Legal Links -->
+                                <div class="col-6">
+                                    <div class="text-center">
+                                        <div class="text-muted small fw-medium mb-2">Legal</div>
+                                        <div class="d-flex flex-column gap-1">
+                                            <a href="https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/LICENSE" target="_blank" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                                                <i class="bi bi-file-earmark-text me-1"></i> AGPL-3.0 License
+                                            </a>
+                                            <a href="https://github.com/Harleythetech/Chiyoko-Haruka/tree/main/discord" target="_blank" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+                                                <i class="bi bi-shield-check me-1"></i> Security Policy
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
-            <hr class="border-secondary my-3">
-            <div class="row">
-                <div class="col-12 text-center">
-                    <small class="text-light">
-                        © 2025 Chiyoko Haruka Bot. Built with ❤️ using Discord.js & Bootstrap
-                    </small>
+
+                    <!-- Divider -->
+                    <hr class="my-4 border-opacity-25">
+
+                    <!-- Bottom Row -->
+                    <div class="row align-items-center">
+                        <div class="col-md-6 text-center text-md-start mb-2 mb-md-0">
+                            <div class="text-muted small">
+                                © 2025 <span class="fw-medium">Harleythetech</span> • All rights reserved
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-center text-md-end">
+                            <div class="d-flex justify-content-center justify-content-md-end align-items-center gap-3">
+                                <div class="text-muted small">Made with love, and a few console.log()s left behind.</div>
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-success rounded-circle me-2" style="width: 8px; height: 8px;"></div>
+                                    <span class="text-muted small" id="ver_footer">v0.0.0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <!-- Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/bootstrap.bundle.min.js"></script>
     <script src="/dash.js"></script>
 </body>
 </html>

@@ -1,6 +1,9 @@
 node_modules
 .env
 
+# PM2 logs
+logs/
+
 # Downloaded music files (temporary)
 downloads/*.mp3
 downloads/*.mp4

@@ -1,71 +1,287 @@
 <p align="center"><img src="https://i.imgur.com/mwOFCBO.png" width="260" height="220"></p>
 
 ### <p align="center">Chiyoko Haruka - V5.0 - Catalyst</p>
-------------------------------------------------------
-Chiyoko Haruka is a feature-packed Discord bot designed to provide a wide range of useful features and utilities to users. One of its unique features is the ILoveYou command, which is designed to reject user confessions in a lighthearted and humorous way.
 
-In addition to this fun feature, Chiyoko Haruka also includes a Spotify Status Checker, which allows you to easily share your latest tracks with friends, and access to popular subreddits such as r/yandere, r/meme, r/wholesomememe, r/suddenlygay, and r/whataweeb.
+---
 
-The bot also provides a range of utilities, including info, invite, ping, serverinfo, and userinfo, which can help you manage your Discord server and stay organized.
+[![Node.js](https://img.shields.io/badge/Node.js-16.x+-green.svg)](https://nodejs.org/)
+[![Discord.js](https://img.shields.io/badge/discord.js-v14.20.0-blue.svg)](https://discord.js.org/)
+[![License](https://img.shields.io/badge/license-ISC-orange.svg)](LICENSE)
+[![PM2](https://img.shields.io/badge/PM2-Ready-brightgreen.svg)](https://pm2.keymetrics.io/)
 
-Whether you're looking for a way to stay connected with the latest memes and trends, share your favorite music, or manage your server more effectively, Chiyoko Haruka has got you covered. With its fun and unique features and powerful utilities, this bot is a must-have for any Discord user.
+## 📖 About
 
-# Get Started
+**Chiyoko Haruka** is a feature-rich Discord bot designed to enhance your server experience with entertainment, utility, and music functionality. Built with Discord.js v14 and featuring a modern web dashboard, this bot combines reliability with extensive customization options.
 
-The following things are required:
-- [Node.js](https://nodejs.org/en)
-- [VSCode](https://code.visualstudio.com/) or any editor you want
-- [Discord Developer Portal](https://discord.com/developers/)
+### ✨ Key Features
 
-Now Let's get into the real deal, Go to [Discord Developer Portal](https://discord.com/developers/) and create a new application.
+- 🎵 **Advanced Music System** - High-quality audio streaming with queue management
+- 🌐 **Web Dashboard** - Real-time monitoring and control interface
+- 🛠️ **Utility Commands** - Server management and information tools
+- 🎭 **Entertainment Features** - Interactive commands and content sharing
+- 📊 **Resource Monitoring** - Built-in performance tracking
+- 🔄 **Auto-restart** - PM2 ecosystem for production reliability
 
-![image](https://user-images.githubusercontent.com/51787264/232237205-36f868bb-df87-4dda-94ee-99502595ac70.png)
+---
 
-once you created your application make sure to get the following things [Bot's Token, Application ID, and Invite Link] your can create your invite link in the OAuth panel> URL Generator
+## 🎵 Music Features
 
-![image](https://user-images.githubusercontent.com/51787264/232237406-0ab32b23-810e-4fab-9078-fd2032f2e6cb.png)
+- **YouTube Integration** - Stream music directly from YouTube
+- **Queue Management** - Add, remove, and organize your playlist
+- **Mix Support** - YouTube Mix and playlist integration
+- **Voice Controls** - Play, pause, skip, and volume controls
+- **Multiple Servers** - Simultaneous playback across different servers
+- **Download Options** - Save your favorite tracks locally
 
-make sure to select Bot as you are using the application for a "BOT". Next Select the permission you want to use, NEVER USE ADMINISTRATORR!
+## 🛠️ Utility Commands
 
-![image](https://user-images.githubusercontent.com/51787264/232237482-dc5f915f-fb93-44fc-8c7b-e25d03a13c21.png)
+| Command | Description |
+|---------|-------------|
+| `/ping` | Check bot latency and response time |
+| `/info` | Display bot information and statistics |
+| `/serverinfo` | Get detailed server information |
+| `/userinfo` | View user profile and statistics |
+| `/invite` | Generate bot invite link |
 
-![image](https://user-images.githubusercontent.com/51787264/232237523-297c2848-fb60-453c-8865-4e00bcdee781.png)
+## 🌐 Web Dashboard
 
-My default choice are these since it doesn't join a call nor does it have any moderator tools. Okay, once everything is selected you should be able to see a link underneath that selections. Make sure to copy that link and paste it in the ```INVLINK``` That is found in ```./handlers/config.json/```.
+Access the built-in web interface at `http://localhost:3000` (or your configured port) to:
 
-**Moving Forward!**
+- 📈 Monitor bot performance and resource usage
+- 🎵 Control music playback across servers
+- 📊 View real-time statistics and logs
+- 🖥️ Check system information and uptime
+- 👥 Track active voice connections
 
-Next step is to create a file called ```.env``` this is where we store our important keys (Bot's Token, Application ID, ChannelID, GuildID). Once created head over to your developer portal and create a bot.
+---
 
-![image](https://user-images.githubusercontent.com/51787264/232237797-1370b4aa-bbfd-49d1-a256-c4bb9b9cd57b.png)
+## 🚀 Quick Start
 
-just click on the "add bot" to then name it whatever you want below that you should be able to copy your ```Token```. Paste that token to your ENV file
+### Prerequisites
 
-sample code:
-```
-TOKEN=IOPAJDSFOAGDFOUGHNLBVILUH1235634OIUJDFG
-APP_ID=1234537685697585
-GUILD_ID=23145264578458613
-CHANNEL_ID=234534637316345
-```
-For AppID you should be able to get that from ```General Information> ApplicationID``` from Discord Developer Portal
+- [Node.js](https://nodejs.org/) (v16.x or higher)
+- [Git](https://git-scm.com/)
+- [Discord Developer Portal](https://discord.com/developers/) access
+- Code editor ([VSCode](https://code.visualstudio.com/) recommended)
 
-For Channel ID ```chid``` you'll be able to get that by enabling Developer Mode which is found in ```Discord App User Settings> Advanced> Developer Mode``` afterwards exit from settings and right click on a specific channel you wan't to use. Then press CopyID and that should copy your ```chid```
+### Installation
 
-for GuildID ```guid``` right click on your server icon the one on the left side selector then click CopyID and that should copy your ```guid```
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/Harleythetech/Chiyoko-Haruka.git
+   cd Chiyoko-Haruka
+   ```
 
-all of these are needed to be able to make the bot run.
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
 
-**Final Steps**
+3. **Configure Discord Application**
 
-You are almost at the end! all you need to do is run the ```npm install``` (one time command) command first to install all the necessary node_modules then run ```comdep.js``` (bot / command only works on selected GUILD) or ```comdepGlobal.js``` (Global Command) once you managed to run it just run index.js and your bot should start!
+   Go to [Discord Developer Portal](https://discord.com/developers/) and create a new application:
 
-```
-Command Fist Time Install (if newley downloaded)
-npm install
-node CommandPush.js
+   ![Discord Application Creation](https://user-images.githubusercontent.com/51787264/232237205-36f868bb-df87-4dda-94ee-99502595ac70.png)
+
+4. **Generate Bot Invite Link**
+
+   Navigate to OAuth2 > URL Generator and configure permissions:
+
+   ![OAuth2 Configuration](https://user-images.githubusercontent.com/51787264/232237406-0ab32b23-810e-4fab-9078-fd2032f2e6cb.png)
+
+   **Recommended Permissions:**
+   - Read Messages/View Channels
+   - Send Messages
+   - Connect (for voice)
+   - Speak (for music)
+   - Use Slash Commands
+
+   ![Permission Selection](https://user-images.githubusercontent.com/51787264/232237482-dc5f915f-fb93-44fc-8c7b-e25d03a13c21.png)
+
+5. **Environment Configuration**
+
+   Create a `.env` file in the project root:
+
+   ```env
+   # Discord Bot Configuration
+   TOKEN=your_bot_token_here
+   APP_ID=your_application_id_here
+   GUILD_ID=your_guild_id_here
+   CHANNEL_ID=your_log_channel_id_here
+   
+   # Web Dashboard (Optional)
+   PORT=3000
+   ```
+
+   **How to get these values:**
+   - **TOKEN**: Bot section > Reset Token
+   - **APP_ID**: General Information > Application ID
+   - **GUILD_ID**: Enable Developer Mode > Right-click server > Copy ID
+   - **CHANNEL_ID**: Enable Developer Mode > Right-click channel > Copy ID
+
+6. **Deploy Commands**
+   ```bash
+   node CommandPush.js
+   ```
+
+---
+
+## 🏃 Running the Bot
+
+### Development Mode
+```bash
+npm start
+# or
 node index.js
 ```
 
---------------------------------------------------------------------------------
-You Have Reached the end! Thank you for reading.
+### Production with PM2 (Recommended)
+
+**Quick Start:**
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Start with ecosystem
+pm2 start ecosystem.config.js
+
+# View status
+pm2 status
+```
+
+**Using Helper Scripts:**
+```bash
+# Windows users can use the provided batch files
+.\start-pm2.bat          # Start the bot
+.\stop-pm2.bat           # Stop the bot
+.\pm2-manager.bat        # Interactive management menu
+```
+
+### PM2 Management Commands
+
+```bash
+# Process Control
+pm2 start Chiyoko-Haruka     # Start the bot
+pm2 stop Chiyoko-Haruka      # Stop the bot
+pm2 restart Chiyoko-Haruka   # Restart the bot
+pm2 reload Chiyoko-Haruka    # Zero-downtime reload
+
+# Monitoring
+pm2 status                   # View process status
+pm2 logs Chiyoko-Haruka     # View logs
+pm2 monit                   # Resource monitor
+
+# Advanced
+pm2 save                    # Save current processes
+pm2 startup                 # Enable auto-start on boot
+```
+
+---
+
+## 📁 Project Structure
+
+```
+Chiyoko-Haruka/
+├── Commands/                 # Bot commands
+│   ├── media/               # Music-related commands
+│   │   ├── MusicPlayer.js   # Main music functionality
+│   │   ├── PlayStatus.js    # Playback status commands
+│   │   └── modules/         # Music system modules
+│   └── Utility/             # Utility commands
+│       ├── info.js          # Bot information
+│       ├── invite.js        # Invite link generation
+│       ├── ping.js          # Latency checking
+│       ├── serverinfo.js    # Server information
+│       └── userinfo.js      # User information
+├── WEBGUI/                  # Web dashboard
+│   ├── public/              # Static files
+│   └── views/               # EJS templates
+├── handlers/                # Configuration and utilities
+│   ├── config.json          # Bot configuration
+│   └── embed.js             # Message embeds
+├── logs/                    # PM2 log files
+├── downloads/               # Temporary music files
+├── .env                     # Environment variables
+├── ecosystem.config.js      # PM2 configuration
+├── index.js                 # Main application file
+└── CommandPush.js           # Slash command deployment
+```
+
+---
+
+## ⚙️ Configuration
+
+### Bot Configuration (`handlers/config.json`)
+```json
+{
+  "BOT_VERSION": "5.0.0",
+  "INVLINK": "your_bot_invite_link_here"
+}
+```
+
+### PM2 Ecosystem (`ecosystem.config.js`)
+
+The bot includes a production-ready PM2 configuration with:
+- **High Process Priority** - Optimized performance
+- **Auto-restart** - Automatic recovery from crashes
+- **Memory Management** - 712MB limit with smart restart
+- **Logging** - Comprehensive log rotation
+- **Health Monitoring** - Resource usage tracking
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Bot not responding:**
+- Verify bot token in `.env` file
+- Check if bot has necessary permissions
+- Ensure slash commands are deployed with `CommandPush.js`
+
+**Music not working:**
+- Verify voice channel permissions
+- Check if bot can connect to voice channels
+- Ensure FFmpeg is installed (usually bundled with Node.js)
+
+**PM2 issues:**
+- Install PM2 globally: `npm install -g pm2`
+- Check logs: `pm2 logs Chiyoko-Haruka`
+- Restart PM2: `pm2 restart ecosystem.config.js`
+
+### Support
+
+- 📝 [Create an Issue](https://github.com/Harleythetech/Chiyoko-Haruka/issues)
+- 📖 [View Documentation](https://github.com/Harleythetech/Chiyoko-Haruka/wiki)
+- 💬 [Discord Support Server](#) *(Link to be added)*
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Discord.js](https://discord.js.org/) - Discord API wrapper
+- [PM2](https://pm2.keymetrics.io/) - Process management
+- [Express.js](https://expressjs.com/) - Web framework
+- [Socket.IO](https://socket.io/) - Real-time communication
+
+---
+
+<p align="center">
+  Made with ❤️ by <a href="https://github.com/Harleythetech">Harleythetech</a>
+</p>

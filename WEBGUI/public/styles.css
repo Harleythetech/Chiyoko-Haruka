@@ -1,357 +1,213 @@
-@import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css");
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/* Urbanist Font Import */
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@100;200;300;400;500;600;700;800;900&display=swap');
 
+/* Font Override */
 :root {
-    --primary-color: #667eea;
-    --secondary-color: #764ba2;
-    --success-color: #43e97b;
-    --warning-color: #feca57;
-    --info-color: #4facfe;
-    --danger-color: #f5576c;
-    --dark-bg: #1a1a1a;
-    --card-bg: #2d3748;
-    --border-color: #4a5568;
+    --bs-body-font-family: 'Urbanist', system-ui, -apple-system, sans-serif;
 }
 
 * {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Urbanist', system-ui, -apple-system, sans-serif !important;
 }
 
 body {
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d3748 100%);
-    background-attachment: fixed;
-    min-height: 100vh;
-    color: #ffffff;
+    font-family: 'Urbanist', system-ui, -apple-system, sans-serif !important;
+    transition: background 0.6s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
 }
 
-/* Custom Card Animations */
-.card {
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
+/* Theme-specific background gradients */
+html[data-bs-theme="dark"] body {
+    background: linear-gradient(135deg, #39457a 0%, #091049 100%) !important;
 }
 
-.card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3) !important;
+html[data-bs-theme="light"] body {
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
 }
 
-/* Pulse Animation for Live Indicator */
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+/* Default fallback gradient */
+html:not([data-bs-theme]) body,
+html[data-bs-theme="dark"] body {
+    background: linear-gradient(135deg, #39457a 0%, #091049 100%) !important;
 }
 
-.pulse {
-    animation: pulse 2s infinite;
+/* Enhanced Panel Backgrounds with Color Science */
+.glass-effect {
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    background: rgba(255, 255, 255, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.7) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
 }
 
-/* Progress Bar Animations */
-.progress-bar {
-    transition: width 0.8s ease-in-out;
+/* Dark theme specific backgrounds */
+[data-bs-theme="dark"] .glass-effect {
+    background: rgba(0, 0, 0, 0.4) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
 }
 
-/* Status Badge Animation */
-#status {
-    transition: all 0.3s ease;
+/* Light theme specific backgrounds */
+[data-bs-theme="light"] .glass-effect {
+    background: rgba(255, 255, 255, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.9) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Gradient Cards */
-.bg-gradient {
-    position: relative;
-    overflow: hidden;
+/* Enhanced Navigation */
+.glass-nav {
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    background: rgba(255, 255, 255, 0.6) !important;
+    transition: all 0.4s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
 }
 
-.bg-gradient::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 100%);
-    pointer-events: none;
+[data-bs-theme="dark"] .glass-nav {
+    background: rgba(0, 0, 0, 0.5) !important;
 }
 
-/* Custom Scrollbar for Logs */
-#logBox::-webkit-scrollbar {
-    width: 8px;
+[data-bs-theme="light"] .glass-nav {
+    background: rgba(255, 255, 255, 0.85) !important;
 }
 
-#logBox::-webkit-scrollbar-track {
-    background: #2d3748;
-    border-radius: 4px;
+/* Smooth transitions for text elements */
+.text-success, .text-warning, .text-danger, .fs-4, 
+#botStatus, #guildCount, #userCount, #ping {
+    transition: color 0.3s cubic-bezier(0.4, 0.0, 0.2, 1), 
+                text-shadow 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) !important;
 }
 
-#logBox::-webkit-scrollbar-thumb {
-    background: #4a5568;
-    border-radius: 4px;
+/* Improved text contrast for light mode */
+[data-bs-theme="light"] .text-danger {
+    color: #dc3545 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
-#logBox::-webkit-scrollbar-thumb:hover {
-    background: #667eea;
+[data-bs-theme="light"] .text-warning {
+    color: #fd7e14 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Navbar Enhancements */
-.navbar {
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+[data-bs-theme="light"] .text-success {
+    color: #198754 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
-.navbar-brand {
-    font-weight: 600;
+/* Enhanced readability for stat values in light mode */
+[data-bs-theme="light"] .fs-4 {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
 }
 
-/* Button Hover Effects */
-.btn {
-    transition: all 0.3s ease;
+/* Consistent font sizing for all stat values */
+#botStatus, #guildCount, #userCount, #ping {
+    font-size: 1.5rem !important;
+    font-weight: 600 !important;
+    line-height: 1.2 !important;
 }
 
-.btn:hover {
+/* Ensure color classes don't override font size */
+.text-success, .text-warning, .text-danger {
+    font-size: inherit !important;
+    font-weight: inherit !important;
+}
+
+.loading-shimmer {
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+/* Footer Enhancements */
+footer {
+    margin-top: auto;
+}
+
+/* Footer link hover effects */
+footer .btn:hover {
     transform: translateY(-1px);
+    transition: all 0.2s cubic-bezier(0.4, 0.0, 0.2, 1);
 }
 
-/* Loading States */
-.loading {
-    opacity: 0.7;
-    pointer-events: none;
+/* Footer badge hover effects */
+footer .badge {
+    transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    line-height: 1.2 !important;
+    padding: 0.375rem 0.75rem !important;
+    white-space: nowrap !important;
+    min-width: fit-content !important;
 }
 
-/* Responsive Typography */
-@media (max-width: 768px) {
-    .display-4 {
-        font-size: 2rem;
-    }
-    
-    h1 {
-        font-size: 1.5rem;
-    }
-    
-    .card-body {
-        padding: 1rem !important;
-    }
+/* Ensure all badges have consistent height */
+footer .badge.rounded-pill {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 2rem !important;
+    min-width: 4rem !important;
 }
 
-/* Status Indicators */
-.status-online {
-    color: #43e97b !important;
-}
-
-.status-offline {
-    color: #f5576c !important;
-}
-
-/* Chart Container */
-canvas {
-    border-radius: 8px;
-}
-
-/* Custom Badge Styles */
-.badge {
-    font-weight: 500;
-    letter-spacing: 0.025em;
-}
-
-/* Animation for counters */
-@keyframes countUp {
-    from { 
-        opacity: 0.8; 
-        transform: translateY(3px); 
-    }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
-    }
-}
-
-.count-up {
-    animation: countUp 0.2s ease-out;
-}
-
-/* Activity feed styles */
-.activity-item {
-    transition: all 0.2s ease;
-}
-
-.activity-item:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    padding-left: 8px !important;
-    padding-right: 8px !important;
-}
-
-.activity-icon {
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.activity-item:hover .activity-icon {
-    transform: scale(1.1);
-}
-
-/* Enhanced border styles */
-.border-secondary {
-    border-color: rgba(108, 117, 125, 0.3) !important;
-}
-
-/* Info cards hover effects */
-.card .bg-opacity-10:hover {
-    background-color: rgba(var(--bs-primary-rgb), 0.15) !important;
-    transform: translateY(-2px);
-    transition: all 0.2s ease;
-}
-
-/* Command category cards */
-.bg-primary.bg-opacity-10:hover {
-    background-color: rgba(102, 126, 234, 0.2) !important;
-}
-
-.bg-success.bg-opacity-10:hover {
-    background-color: rgba(67, 233, 123, 0.2) !important;
-}
-
-.bg-warning.bg-opacity-10:hover {
-    background-color: rgba(254, 202, 87, 0.2) !important;
-}
-
-.bg-info.bg-opacity-10:hover {
-    background-color: rgba(79, 172, 254, 0.2) !important;
-}
-
-/* Server distribution progress bar */
-.progress {
-    border-radius: 10px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    transition: width 0.6s ease;
-}
-
-/* System health indicators */
-.bg-opacity-10 {
-    backdrop-filter: blur(5px);
-}
-
-/* Loading state improvements */
-.loading {
-    opacity: 0.6;
-    pointer-events: none;
-    position: relative;
-}
-
-.loading::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 16px;
-    height: 16px;
-    margin: -8px 0 0 -8px;
-    border: 2px solid transparent;
-    border-top: 2px solid currentColor;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Improved mobile responsiveness */
-@media (max-width: 576px) {
-    .card-body {
-        padding: 1rem !important;
-    }
-    
-    .activity-item {
-        padding: 0.75rem 0 !important;
-    }
-    
-    .activity-icon {
-        width: 32px;
-        height: 32px;
-    }
-    
-    .fs-3 {
-        font-size: 1.5rem !important;
-    }
-}
-
-/* Enhanced card shadows */
-.shadow-lg {
-    box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.3) !important;
-}
-
-/* Smooth transitions for all interactive elements */
-* {
-    transition: background-color 0.15s ease-in-out, 
-                border-color 0.15s ease-in-out, 
-                box-shadow 0.15s ease-in-out,
-                transform 0.15s ease-in-out;
-}
-
-/* Music Player Styles */
-#musicPlayerContainer {
-    min-height: 200px;
-}
-
-#musicThumbnail {
-    border-radius: 8px;
-    transition: transform 0.3s ease;
-}
-
-#musicThumbnail:hover {
+footer .badge:hover {
     transform: scale(1.05);
 }
 
-.music-info h5 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
+/* Modal enhancements */
+.modal-content.glass-effect {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
-.music-controls .btn {
-    transition: all 0.2s ease;
+[data-bs-theme="dark"] .modal-content.glass-effect {
+    background: rgba(0, 0, 0, 0.6) !important;
 }
 
-.music-controls .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+[data-bs-theme="light"] .modal-content.glass-effect {
+    background: rgba(255, 255, 255, 0.9) !important;
 }
 
-.music-stats .bg-opacity-10:hover {
-    background-color: rgba(var(--bs-primary-rgb), 0.2) !important;
-    transform: translateY(-1px);
+/* Footer responsive adjustments */
+@media (max-width: 768px) {
+    footer .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.75rem;
+    }
+    
+    footer .badge {
+        font-size: 0.65rem !important;
+        padding: 0.25rem 0.5rem !important;
+        height: 1.75rem !important;
+        min-width: 3.5rem !important;
+    }
 }
 
-/* Music Player Animation */
-@keyframes musicPulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
+/* Music Session Height Adaptation */
+#musicSessions {
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-.music-playing-indicator {
-    animation: musicPulse 2s infinite;
+#musicSessions .card {
+    flex-grow: 1 !important;
+    min-height: 0 !important;
 }
 
-/* Progress bar for music */
-#musicProgress {
-    transition: width 0.5s ease;
+#musicSessions .card .card-body {
+    flex-grow: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-/* No music state styling */
-#noMusicState {
-    opacity: 0.7;
-    transition: opacity 0.3s ease;
-}
-
-#noMusicState:hover {
-    opacity: 1;
+/* When music sessions are showing, remove d-none and ensure flex display */
+#musicSessions:not(.d-none) {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
 }

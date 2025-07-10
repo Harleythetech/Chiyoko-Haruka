@@ -1,13 +1,13 @@
+const path = require('path');
+const fs = require('fs');
 const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AttachmentBuilder} = require('discord.js');
 const {bug, failedtoplay, notoncall, left} = require('../../handlers/embed.js');
 const { createAudioPlayer, createAudioResource, joinVoiceChannel, AudioPlayerStatus, StreamType} = require('@discordjs/voice');
 const {BOT_VERSION} = require('../../handlers/config.json');
 const ytdl = require('@distube/ytdl-core');
 const ytpl = require('@distube/ytpl');
-const { mixHandler, handleYouTubeMix } = require('./modules/YouTubeMixIntegration');
-const VideoInfoExtractor = require('./modules/VideoInfoExtractor');
-const fs = require('fs');
-const path = require('path');
+const { mixHandler, handleYouTubeMix } = require(path.join(__dirname, 'modules', 'YouTubeMixIntegration'));
+const VideoInfoExtractor = require(path.join(__dirname, 'modules', 'VideoInfoExtractor'));
 
 // Retry helper function with exponential backoff
 async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
@@ -20,17 +20,17 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
             }
             
             // Check if it's a rate limit or robot detection error
-            const isRetryableError = error.message.includes('429') || 
-                                   error.message.includes('robot') ||
-                                   error.message.includes('captcha') ||
-                                   error.message.includes('rate limit');
+            const errorMessage = error?.message || error?.toString() || '';
+            const isRetryableError = errorMessage.includes('429') || 
+                                   errorMessage.includes('robot') ||
+                                   errorMessage.includes('captcha') ||
+                                   errorMessage.includes('rate limit');
             
             if (!isRetryableError) {
                 throw error;
             }
             
             const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 1000;
-            console.log(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
@@ -58,7 +58,6 @@ class MusicManager {
             // If we can't extract video ID, use the fallback
             return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
         } catch (error) {
-            console.log('Error getting HD thumbnail:', error.message);
             return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
         }
     }
@@ -132,7 +131,8 @@ class MusicManager {
                 connection: null,
                 audioPlayer: createAudioPlayer(),
                 queue: [],
-                currentResource: null
+                currentResource: null,
+                lastMusicMessage: null
             });
         }
         return this.players.get(guildId);
@@ -160,8 +160,7 @@ class MusicManager {
         // Validate YouTube URL
         if (!this.isYouTubeURL(url)) {
             return interaction.editReply({
-                content: '❌ Please provide a valid YouTube URL.',
-                flags: MessageFlags.Ephemeral
+                content: '❌ Please provide a valid YouTube URL.'
             });
         }
         
@@ -194,10 +193,9 @@ class MusicManager {
                 await this.handleSingleVideo(interaction, url, player);
             }
         } catch (error) {
-            console.error('Error in play function:', error);
+            global.reportError(error, 'Play-Music-Main', 'Media');
             await interaction.editReply({
-                content: '❌ An error occurred while processing your request.',
-                flags: MessageFlags.Ephemeral
+                content: '❌ An error occurred while processing your request.'
             });
         }
     }
@@ -205,9 +203,51 @@ class MusicManager {
     // Handle single video
     async handleSingleVideo(interaction, url, player) {
         try {
-            // Use the robust video extractor instead of direct ytdl.getInfo
-            console.log('Extracting video info using robust method...');
-            const videoInfo = await this.videoExtractor.getVideoInfo(url);
+            // Try fast method first for better user experience
+            let videoInfo;
+            
+            try {
+                // Fast method: Direct ytdl.getInfo with timeout for responsiveness
+                const infoPromise = ytdl.getInfo(url, { 
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+                    }
+                });
+                
+                // Add 8-second timeout for fast method
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Fast method timeout')), 8000)
+                );
+                
+                const info = await Promise.race([infoPromise, timeoutPromise]);
+                
+                videoInfo = {
+                    success: true,
+                    title: info.videoDetails.title,
+                    duration: parseInt(info.videoDetails.lengthSeconds) || 0,
+                    thumbnail: info.videoDetails.thumbnails?.[0]?.url,
+                    channel: info.videoDetails.author?.name || 'Unknown',
+                    method: 'fast-ytdl'
+                };
+            } catch (fastError) {
+                try {
+                    // Fallback to robust method only if fast method fails
+                    videoInfo = await this.videoExtractor.getVideoInfo(url);
+                } catch (robustError) {
+                    // Final fallback: extract basic info from URL
+                    const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+                    videoInfo = {
+                        success: true,
+                        title: videoId ? `YouTube Video ${videoId}` : 'Unknown Video',
+                        duration: 0,
+                        thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null,
+                        channel: 'Unknown',
+                        method: 'minimal-fallback'
+                    };
+                }
+            }
             
             if (!videoInfo.success) {
                 throw new Error(videoInfo.error);
@@ -235,18 +275,19 @@ class MusicManager {
             }
             
         } catch (error) {
-            console.error('Error handling single video:', error);
+            global.reportError(error, 'Play-Music-SingleVideo', 'Media');
             
             // Provide more specific error messages
             let errorMessage = '❌ Failed to process the video. Please check the URL and try again.';
             
-            if (error.message.includes('robot') || error.message.includes('captcha')) {
+            const errorMsg = error?.message || error?.toString() || '';
+            if (errorMsg.includes('robot') || errorMsg.includes('captcha')) {
                 errorMessage = '❌ YouTube is temporarily blocking requests. Please try again in a few minutes.';
-            } else if (error.message.includes('429')) {
+            } else if (errorMsg.includes('429')) {
                 errorMessage = '❌ Rate limit exceeded. Please wait a moment before trying again.';
-            } else if (error.message.includes('Video unavailable')) {
+            } else if (errorMsg.includes('Video unavailable')) {
                 errorMessage = '❌ This video is unavailable, private, or age-restricted.';
-            } else if (error.message.includes('All methods failed')) {
+            } else if (errorMsg.includes('All methods failed')) {
                 errorMessage = '❌ Could not extract video information. The video may be unavailable or restricted.';
             }
             
@@ -257,8 +298,6 @@ class MusicManager {
     // Handle regular playlists (mixes are handled separately)
     async handlePlaylist(interaction, url, player) {
         try {
-            await interaction.editReply({ content: '🔄 Loading playlist...' });
-            
             const playlist = await ytpl(url, { limit: 50 });
             
             if (!playlist.items || playlist.items.length === 0) {
@@ -270,8 +309,6 @@ class MusicManager {
             let addedCount = 0;
             let skippedCount = 0;
             const wasEmpty = player.queue.length === 0 && player.audioPlayer.state.status !== AudioPlayerStatus.Playing;
-            
-            await interaction.editReply({ content: '🔄 Processing playlist songs...' });
             
             for (const item of playlist.items) {
                 if (!item.id || item.title === '[Private video]' || item.title === '[Deleted video]') {
@@ -295,18 +332,22 @@ class MusicManager {
                 
                 player.queue.push(song);
                 addedCount++;
-                
-                // Update progress every 10 songs
-                if (addedCount % 10 === 0) {
-                    await interaction.editReply({ 
-                        content: `🔄 Added ${addedCount}/${playlist.items.length} songs...` 
-                    });
-                }
             }
             
             if (wasEmpty && addedCount > 0) {
                 this.playNext(interaction.guildId);
-                await this.sendPlaylistEmbed(interaction, playlist, addedCount, false, skippedCount);
+                // Wait a moment for the song to start, then show Now Playing embed
+                setTimeout(async () => {
+                    const currentSong = this.currentlyPlaying.get(interaction.guildId);
+                    if (currentSong) {
+                        await this.sendNowPlayingEmbed(interaction, currentSong);
+                    } else {
+                        // Fallback if currentlyPlaying isn't set yet
+                        const message = `✅ Added **${addedCount}** songs from playlist **${playlist.title}** to the queue` +
+                                       (skippedCount > 0 ? ` (${skippedCount} songs skipped)` : '') + '\n🎵 Playing now!';
+                        await interaction.editReply({ content: message });
+                    }
+                }, 1000); // Wait 1 second for song to start
             } else {
                 const message = `✅ Added **${addedCount}** songs from playlist **${playlist.title}** to the queue` +
                                (skippedCount > 0 ? ` (${skippedCount} songs skipped)` : '');
@@ -314,7 +355,7 @@ class MusicManager {
             }
             
         } catch (error) {
-            console.error('Error handling playlist:', error);
+            global.reportError(error, 'Play-Music-Playlist', 'Media');
             
             // Fallback: try to extract and play single video from URL
             const videoMatch = url.match(/[&?]v=([a-zA-Z0-9_-]{11})/);
@@ -346,6 +387,9 @@ class MusicManager {
                 player.currentResource.encoder?.destroy();
                 player.currentResource = null;
             }
+            if (player) {
+                player.lastMusicMessage = null; // Clear message reference when queue ends
+            }
             return;
         }
         
@@ -353,52 +397,26 @@ class MusicManager {
         
         const attemptPlay = async () => {
             try {
-                // Try multiple streaming approaches with fallbacks
-                let stream;
-                let streamCreated = false;
-                
-                // Method 1: Try basic ytdl without extra options
-                try {
-                    stream = ytdl(nextSong.url, {
-                        filter: 'audioonly',
-                        quality: 'highestaudio',
-                        highWaterMark: 1 << 25, // Add buffering back
-                        requestOptions: {
-                            headers: {
-                                'Range': 'bytes=0-'
-                            }
+                // Use fast streaming method for optimal performance
+                const stream = ytdl(nextSong.url, {
+                    filter: 'audioonly',
+                    quality: 'highestaudio', // High quality audio for best experience
+                    highWaterMark: 1 << 30, // Optimized buffer size for fast start
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                            'Range': 'bytes=0-'
                         }
-                    });
-                    streamCreated = true;
-                } catch (basicError) {
-                    // Basic ytdl failed, continue to next method
-                }
-                
-                // Method 2: Try without any options if basic failed
-                if (!streamCreated) {
-                    try {
-                        console.log('Trying minimal ytdl streaming...');
-                        stream = ytdl(nextSong.url, {
-                            highWaterMark: 1 << 25 // Keep buffering even in minimal mode
-                        });
-                        streamCreated = true;
-                        console.log('Minimal ytdl stream created successfully');
-                    } catch (minimalError) {
-                        console.log('Minimal ytdl failed:', minimalError.message);
                     }
-                }
-                
-                if (!streamCreated) {
-                    throw new Error('All streaming methods failed');
-                }
+                });
                 
                 // Add error handling to the stream
                 stream.on('error', (error) => {
-                    console.log(`Stream error (non-fatal): ${error.message}`);
+                    const errorMsg = error?.message || error?.toString() || 'Unknown error';
                     // Only skip if it's a critical error, not 'aborted'
-                    if (!error.message.includes('aborted')) {
+                    if (!errorMsg.includes('aborted')) {
+                        global.reportError(error, 'Play-Music-StreamError', 'Media');
                         if (player.queue.length > 0) {
-                            console.log('Non-aborted error, skipping to next song...');
                             this.playNext(guildId);
                         }
                     }
@@ -420,10 +438,10 @@ class MusicManager {
                 
                 // Add error handling to the resource but don't crash on aborted
                 resource.playStream.on('error', (error) => {
-                    console.log(`Resource stream error (non-fatal): ${error.message}`);
+                    const errorMsg = error?.message || error?.toString() || 'Unknown error';
                     // Don't skip on aborted errors - they're normal when stopping/skipping
-                    if (!error.message.includes('aborted')) {
-                        console.log('Non-aborted resource error, this might be serious');
+                    if (!errorMsg.includes('aborted')) {
+                        global.reportError(error, 'Play-Music-ResourceError', 'Media');
                     }
                 });
                 
@@ -435,7 +453,7 @@ class MusicManager {
                             player.currentResource.encoder.destroy();
                         }
                     } catch (cleanupError) {
-                        console.log('Cleanup error (non-fatal):', cleanupError.message);
+                        global.reportError(cleanupError, 'Play-Music-Cleanup', 'Media');
                     }
                 }
                 
@@ -452,22 +470,31 @@ class MusicManager {
                 
                 // Set up event listener for when song ends
                 player.audioPlayer.removeAllListeners('stateChange');
-                player.audioPlayer.on('stateChange', (oldState, newState) => {
+                player.audioPlayer.on('stateChange', async (oldState, newState) => {
                     if (newState.status === AudioPlayerStatus.Idle) {
                         this.playNext(guildId);
+                        
+                        // Auto-update embed when next song starts
+                        setTimeout(async () => {
+                            const newCurrentSong = this.currentlyPlaying.get(guildId);
+                            if (newCurrentSong && player.lastMusicMessage) {
+                                try {
+                                    await this.updateMusicEmbedAuto(player.lastMusicMessage, newCurrentSong);
+                                } catch (error) {
+                                    // Silently handle embed update errors (message might be deleted)
+                                }
+                            }
+                        }, 1000); // Wait 1 second for new song to load
                     }
                 });
                 
             } catch (error) {
-                console.error('Error playing song:', error.message);
-                console.log(`Failed to play: ${nextSong.title} - skipping to next song`);
+                global.reportError(error, 'Play-Music-Stream', 'Media');
                 
                 // If this song fails, try the next one
                 if (player.queue.length > 0) {
-                    console.log(`Trying next song in queue (${player.queue.length} remaining)...`);
                     this.playNext(guildId);
                 } else {
-                    console.log('No more songs in queue, stopping playback');
                     // No more songs, stop playback
                     this.currentlyPlaying.delete(guildId);
                     if (player.currentResource) {
@@ -487,133 +514,63 @@ class MusicManager {
         const duration = this.formatDuration(song.duration);
         
         const embed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setAuthor({ 
-                name: "Now Playing", 
-                iconURL: "https://cdn-icons-png.flaticon.com/512/2468/2468825.png" 
-            })
+            .setColor('#00FF7F')
+            .setTitle('🎵 Now Playing')
+            .setDescription(`**${song.title}**`)
+            .addFields(
+                { name: '🎤 Artist/Channel', value: song.channel, inline: true },
+                { name: '⏱️ Duration', value: duration || 'Live/Unknown', inline: true },
+                { name: '👤 Requested by', value: song.requestedBy, inline: true },
+                { name: '🔗 Source', value: '[Open on YouTube](' + song.url + ')', inline: false }
+            )
             .setImage(song.thumbnail)
-            .addFields(
-                { name: 'Title', value: `\`\`\`${song.title}\`\`\`` },
-                { name: 'Duration', value: `\`\`\`${duration || 'Unknown'}\`\`\``, inline: true },
-                { name: 'Channel', value: `\`\`\`${song.channel}\`\`\``, inline: true }
-            )
-            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+            .setFooter({ text: `🎶 Music Player | ${BOT_VERSION}` })
             .setTimestamp();
         
-        const playButton = new ButtonBuilder()
-            .setLabel('Play on YouTube')
-            .setStyle(ButtonStyle.Link)
-            .setURL(song.url);
+        // Media control buttons - First row
+        const controlRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`music_pause_${interaction.guildId}`)
+                .setLabel('Pause')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId(`music_skip_${interaction.guildId}`)
+                .setLabel('Skip')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`music_stop_${interaction.guildId}`)
+                .setLabel('Stop')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`music_queue_${interaction.guildId}`)
+                .setLabel('Queue')
+                .setStyle(ButtonStyle.Secondary)
+        );
         
-        const downloadButton = new ButtonBuilder()
-            .setCustomId(`download_song_${interaction.guildId}`)
-            .setLabel('📥 Download Song')
-            .setStyle(ButtonStyle.Secondary);
-        
-        const row = new ActionRowBuilder().addComponents(playButton, downloadButton);
-        
-        await interaction.editReply({ embeds: [embed], components: [row] });
-    }
-    
-    // Send playlist embed
-    async sendPlaylistEmbed(interaction, playlist, addedCount, isMix = false, skippedCount = 0) {
-        const playlistType = isMix ? '🎵 Mix' : '📋 Playlist';
-        const emoji = isMix ? '🎲' : '📋';
-        
-        const embed = new EmbedBuilder()
-            .setColor(isMix ? '#FF6B6B' : '#4285F4')
-            .setTitle(`${emoji} ${isMix ? 'Mix' : 'Playlist'} Added!`)
-            .setDescription(`**${playlist.title}**`)
-            .addFields(
-                { name: '🎵 Songs Added', value: `${addedCount}`, inline: true },
-                { name: '👤 Author', value: playlist.author?.name || 'YouTube', inline: true },
-                { name: '📊 Total Videos', value: `${playlist.estimatedItemCount || playlist.items?.length || addedCount}`, inline: true }
-            )
-            .setThumbnail(playlist.bestThumbnail?.url || playlist.thumbnails?.[0]?.url)
-            .setFooter({ text: `${isMix ? 'Mix ID: ' + playlist.id : 'Playlist ID: ' + playlist.id} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        if (skippedCount > 0) {
-            embed.addFields({
-                name: '⚠️ Skipped',
-                value: `${skippedCount} songs were skipped (unavailable or restricted)`,
-                inline: false
-            });
-        }
-        
-        if (isMix) {
-            embed.addFields({
-                name: '💡 Note',
-                value: 'This is a YouTube Mix - songs are dynamically generated based on your selection.',
-                inline: false
-            });
-        }
-        
-        await interaction.editReply({ embeds: [embed] });
-    }
-    
-    // Send enhanced mix embed with first song thumbnail
-    async sendEnhancedMixEmbed(interaction, playlist, addedCount, firstSong, skippedCount = 0) {
-        const embed = new EmbedBuilder()
-            .setColor('#FF6B6B')
-            .setTitle('🎲 YouTube Mix Added!')
-            .setDescription(`**${playlist.title}**`)
-            .addFields(
-                { name: '🎵 Songs Added', value: `${addedCount}`, inline: true },
-                { name: '👤 Author', value: playlist.author?.name || 'YouTube', inline: true },
-                { name: '📊 Total Videos', value: `${playlist.estimatedItemCount || addedCount}`, inline: true }
-            )
-            .setFooter({ text: `Mix ID: ${playlist.id} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        // Add the first song's thumbnail as the main image
-        if (firstSong && firstSong.thumbnail) {
-            embed.setImage(firstSong.thumbnail);
-            embed.addFields({
-                name: '🎵 Now Starting',
-                value: `**${firstSong.title}**\nby ${firstSong.channel}`,
-                inline: false
-            });
-        }
-        
-        if (skippedCount > 0) {
-            embed.addFields({
-                name: '⚠️ Skipped',
-                value: `${skippedCount} songs were skipped (unavailable or restricted)`,
-                inline: false
-            });
-        }
-        
-        embed.addFields({
-            name: '💡 Note',
-            value: 'This is a YouTube Mix - songs are dynamically generated based on your selection.',
-            inline: false
-        });
-        
-        // Add download button for the first song if available
-        let row = null;
-        if (firstSong && firstSong.url) {
-            const downloadButton = new ButtonBuilder()
+        // Additional controls - Second row
+        const extraRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
                 .setCustomId(`download_song_${interaction.guildId}`)
-                .setLabel('📥 Download Current Song')
-                .setStyle(ButtonStyle.Secondary);
-            
-            const playButton = new ButtonBuilder()
+                .setLabel('Download')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
                 .setLabel('Play on YouTube')
                 .setStyle(ButtonStyle.Link)
-                .setURL(firstSong.url);
-            
-            row = new ActionRowBuilder().addComponents(downloadButton, playButton);
+                .setURL(song.url),
+            new ButtonBuilder()
+                .setCustomId(`music_leave_${interaction.guildId}`)
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Danger)
+        );
+        
+        await interaction.editReply({ embeds: [embed], components: [controlRow, extraRow] });
+        
+        // Store the message reference for auto-updates
+        const message = await interaction.fetchReply();
+        const player = this.players.get(interaction.guildId);
+        if (player) {
+            player.lastMusicMessage = message;
         }
-        
-        // Update footer
-        embed.setFooter({ text: `Mix ID: ${playlist.id} | ${BOT_VERSION}` });
-        
-        await interaction.editReply({ 
-            embeds: [embed], 
-            components: row ? [row] : [] 
-        });
     }
     
     // Format duration from seconds to MM:SS
@@ -623,13 +580,269 @@ class MusicManager {
         return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
     }
     
+    // Update music embed based on current state
+    async updateMusicEmbed(interaction, song, state, extraInfo = null) {
+        let embed, controlRow, extraRow;
+        
+        switch (state) {
+            case 'playing':
+                embed = new EmbedBuilder()
+                    .setColor('#00FF7F')
+                    .setTitle('🎵 Now Playing')
+                    .setDescription(song ? `**${song.title}**` : 'Music is playing')
+                    .setFooter({ text: `🎶 Music Player | ${BOT_VERSION}` })
+                    .setTimestamp();
+                
+                if (song) {
+                    const duration = this.formatDuration(song.duration);
+                    embed.addFields(
+                        { name: '🎤 Artist/Channel', value: song.channel, inline: true },
+                        { name: '⏱️ Duration', value: duration || 'Live/Unknown', inline: true },
+                        { name: '👤 Requested by', value: song.requestedBy, inline: true },
+                        { name: '🔗 Source', value: '[Open on YouTube](' + song.url + ')', inline: false }
+                    ).setImage(song.thumbnail);
+                }
+                
+                controlRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`music_pause_${interaction.guildId}`)
+                        .setLabel('Pause')
+                        .setStyle(ButtonStyle.Secondary),
+                    new ButtonBuilder()
+                        .setCustomId(`music_skip_${interaction.guildId}`)
+                        .setLabel('Skip')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`music_stop_${interaction.guildId}`)
+                        .setLabel('Stop')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId(`music_queue_${interaction.guildId}`)
+                        .setLabel('Queue')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                
+                if (song) {
+                    extraRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`download_song_${interaction.guildId}`)
+                            .setLabel('Download')
+                            .setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder()
+                            .setLabel('Play on YouTube')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(song.url),
+                        new ButtonBuilder()
+                            .setCustomId(`music_leave_${interaction.guildId}`)
+                            .setLabel('Leave')
+                            .setStyle(ButtonStyle.Danger)
+                    );
+                }
+                break;
+                
+            case 'paused':
+                embed = new EmbedBuilder()
+                    .setColor('#FFA500')
+                    .setTitle('⏸️ Music Paused')
+                    .setDescription(song ? `**${song.title}** is paused` : 'Playback paused')
+                    .addFields(
+                        { name: '💡 Status', value: 'Click Resume to continue playback', inline: false }
+                    )
+                    .setFooter({ text: `🎶 Paused by ${interaction.user.displayName}` })
+                    .setTimestamp();
+                
+                if (song && song.thumbnail) {
+                    embed.setThumbnail(song.thumbnail);
+                }
+                
+                controlRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`music_resume_${interaction.guildId}`)
+                        .setLabel('Resume')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`music_skip_${interaction.guildId}`)
+                        .setLabel('Skip')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId(`music_stop_${interaction.guildId}`)
+                        .setLabel('Stop')
+                        .setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder()
+                        .setCustomId(`music_queue_${interaction.guildId}`)
+                        .setLabel('Queue')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                break;
+                
+            case 'skipped':
+                if (song) {
+                    // New song is playing after skip
+                    embed = new EmbedBuilder()
+                        .setColor('#00FF7F')
+                        .setTitle('⏭️ Skipped → Now Playing')
+                        .setDescription(`**${song.title}**`)
+                        .addFields(
+                            { name: '⏮️ Previous', value: `Skipped: **${extraInfo}**`, inline: false },
+                            { name: '🎤 Artist/Channel', value: song.channel, inline: true },
+                            { name: '⏱️ Duration', value: this.formatDuration(song.duration) || 'Live/Unknown', inline: true },
+                            { name: '👤 Requested by', value: song.requestedBy, inline: true }
+                        )
+                        .setImage(song.thumbnail)
+                        .setFooter({ text: `🎶 Skipped by ${interaction.user.displayName}` })
+                        .setTimestamp();
+                    
+                    controlRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`music_pause_${interaction.guildId}`)
+                            .setLabel('Pause')
+                            .setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder()
+                            .setCustomId(`music_skip_${interaction.guildId}`)
+                            .setLabel('Skip')
+                            .setStyle(ButtonStyle.Primary),
+                        new ButtonBuilder()
+                            .setCustomId(`music_stop_${interaction.guildId}`)
+                            .setLabel('Stop')
+                            .setStyle(ButtonStyle.Danger),
+                        new ButtonBuilder()
+                            .setCustomId(`music_queue_${interaction.guildId}`)
+                            .setLabel('Queue')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+                    
+                    extraRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`download_song_${interaction.guildId}`)
+                            .setLabel('Download')
+                            .setStyle(ButtonStyle.Secondary),
+                        new ButtonBuilder()
+                            .setLabel('Play on YouTube')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(song.url),
+                        new ButtonBuilder()
+                            .setCustomId(`music_leave_${interaction.guildId}`)
+                            .setLabel('Leave')
+                            .setStyle(ButtonStyle.Danger)
+                    );
+                } else {
+                    // No more songs in queue
+                    embed = new EmbedBuilder()
+                        .setColor('#6C757D')
+                        .setTitle('⏭️ Queue Finished')
+                        .setDescription(`Skipped: **${extraInfo}**\n\nNo more songs in the queue.`)
+                        .addFields(
+                            { name: '💡 What\'s next?', value: 'Add more music with `/play-music play` or leave the voice channel', inline: false }
+                        )
+                        .setFooter({ text: `🎶 Skipped by ${interaction.user.displayName}` })
+                        .setTimestamp();
+                    
+                    controlRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`music_leave_${interaction.guildId}`)
+                            .setLabel('Leave Voice Channel')
+                            .setStyle(ButtonStyle.Danger)
+                    );
+                }
+                break;
+                
+            case 'stopped':
+                embed = new EmbedBuilder()
+                    .setColor('#FF4444')
+                    .setTitle('⏹️ Music Stopped')
+                    .setDescription('Playback has been stopped and the queue has been cleared')
+                    .addFields(
+                        { name: '🗑️ Queue Status', value: 'All songs removed from queue', inline: true },
+                        { name: '💡 Start Again', value: 'Use `/play-music play` with a new URL to start fresh', inline: true }
+                    )
+                    .setFooter({ text: `🎶 Stopped by ${interaction.user.displayName}` })
+                    .setTimestamp();
+                
+                controlRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`music_leave_${interaction.guildId}`)
+                        .setLabel('Leave Voice Channel')
+                        .setStyle(ButtonStyle.Danger)
+                );
+                break;
+        }
+        
+        const components = extraRow ? [controlRow, extraRow] : [controlRow];
+        await interaction.update({ embeds: [embed], components: components });
+    }
+    
+    // Auto-update music embed when song changes (without user interaction)
+    async updateMusicEmbedAuto(message, song) {
+        if (!message || !song) return;
+        
+        try {
+            const embed = new EmbedBuilder()
+                .setColor('#00FF7F')
+                .setTitle('🎵 Now Playing')
+                .setDescription(`**${song.title}**`)
+                .addFields(
+                    { name: '🎤 Artist/Channel', value: song.channel, inline: true },
+                    { name: '⏱️ Duration', value: this.formatDuration(song.duration) || 'Live/Unknown', inline: true },
+                    { name: '👤 Requested by', value: song.requestedBy, inline: true },
+                    { name: '🔗 Source', value: '[Open on YouTube](' + song.url + ')', inline: false }
+                )
+                .setImage(song.thumbnail)
+                .setFooter({ text: `🎶 Music Player | ${BOT_VERSION}` })
+                .setTimestamp();
+            
+            // Extract guildId from the song data or from the message
+            const guildId = message.guildId || message.guild?.id;
+            
+            // Media control buttons
+            const controlRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`music_pause_${guildId}`)
+                    .setLabel('⏸Pause')
+                    .setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder()
+                    .setCustomId(`music_skip_${guildId}`)
+                    .setLabel('Skip')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId(`music_stop_${guildId}`)
+                    .setLabel('Stop')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`music_queue_${guildId}`)
+                    .setLabel('Queue')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+            
+            // Additional controls
+            const extraRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`download_song_${guildId}`)
+                    .setLabel('Download')
+                    .setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder()
+                    .setLabel('Play on YouTube')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(song.url),
+                new ButtonBuilder()
+                    .setCustomId(`music_leave_${guildId}`)
+                    .setLabel('Leave')
+                    .setStyle(ButtonStyle.Danger)
+            );
+            
+            await message.edit({ embeds: [embed], components: [controlRow, extraRow] });
+        } catch (error) {
+            // Silently handle errors - message might be deleted or permissions changed
+            // Don't report these errors as they're expected in normal operation
+        }
+    }
+    
     // Pause the current song
     async pause(interaction) {
         const guildId = interaction.guildId;
         const player = this.players.get(guildId);
         
         if (!player || player.audioPlayer.state.status !== AudioPlayerStatus.Playing) {
-            return interaction.reply({ content: '❌ Nothing is currently playing.' });
+            return interaction.update({ content: '❌ Nothing is currently playing.', embeds: [], components: [] });
         }
         
         player.audioPlayer.pause();
@@ -642,14 +855,8 @@ class MusicManager {
             this.currentlyPlaying.set(guildId, currentSong);
         }
         
-        const embed = new EmbedBuilder()
-            .setColor('#FF0000')
-            .setTitle('⏸️ Paused')
-            .setDescription(currentSong ? currentSong.title : 'Music paused')
-            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [embed] });
+        // Update the existing embed to show paused state
+        await this.updateMusicEmbed(interaction, currentSong, 'paused');
     }
     
     // Resume the current song
@@ -658,7 +865,7 @@ class MusicManager {
         const player = this.players.get(guildId);
         
         if (!player || player.audioPlayer.state.status !== AudioPlayerStatus.Paused) {
-            return interaction.reply({ content: '❌ Nothing is currently paused.' });
+            return interaction.update({ content: '❌ Nothing is currently paused.', embeds: [], components: [] });
         }
         
         player.audioPlayer.unpause();
@@ -673,14 +880,8 @@ class MusicManager {
             this.currentlyPlaying.set(guildId, currentSong);
         }
         
-        const embed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('▶️ Resumed')
-            .setDescription(currentSong ? currentSong.title : 'Music resumed')
-            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [embed] });
+        // Update the existing embed to show playing state
+        await this.updateMusicEmbed(interaction, currentSong, 'playing');
     }
     
     // Skip the current song
@@ -689,20 +890,19 @@ class MusicManager {
         const player = this.players.get(guildId);
         
         if (!player || player.audioPlayer.state.status === AudioPlayerStatus.Idle) {
-            return interaction.reply({ content: '❌ Nothing is currently playing.' });
+            return interaction.update({ content: '❌ Nothing is currently playing.', embeds: [], components: [] });
         }
         
         const currentSong = this.currentlyPlaying.get(guildId);
+        const skippedTitle = currentSong ? currentSong.title : 'Unknown Song';
+        
         player.audioPlayer.stop(); // This will trigger the next song
         
-        const embed = new EmbedBuilder()
-            .setColor('#FFA500')
-            .setTitle('⏭️ Skipped')
-            .setDescription(currentSong ? `Skipped: ${currentSong.title}` : 'Song skipped')
-            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [embed] });
+        // Wait a moment for the next song to start, then update embed
+        setTimeout(async () => {
+            const newCurrentSong = this.currentlyPlaying.get(guildId);
+            await this.updateMusicEmbed(interaction, newCurrentSong, 'skipped', skippedTitle);
+        }, 500);
     }
     
     // Stop playback and clear queue
@@ -711,11 +911,12 @@ class MusicManager {
         const player = this.players.get(guildId);
         
         if (!player) {
-            return interaction.reply({ content: '❌ No active music player.' });
+            return interaction.update({ content: '❌ No active music player.', embeds: [], components: [] });
         }
         
         player.audioPlayer.stop();
         player.queue = [];
+        player.lastMusicMessage = null; // Clear message reference
         this.currentlyPlaying.delete(guildId);
         
         if (player.currentResource) {
@@ -724,14 +925,8 @@ class MusicManager {
             player.currentResource = null;
         }
         
-        const embed = new EmbedBuilder()
-            .setColor('#FF0000')
-            .setTitle('⏹️ Stopped')
-            .setDescription('Music playback stopped and queue cleared.')
-            .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
-            .setTimestamp();
-        
-        await interaction.reply({ embeds: [embed] });
+        // Update embed to show stopped state
+        await this.updateMusicEmbed(interaction, null, 'stopped');
     }
     
     // Show current queue
@@ -741,35 +936,87 @@ class MusicManager {
         const currentSong = this.currentlyPlaying.get(guildId);
         
         if (!player || (!currentSong && player.queue.length === 0)) {
-            return interaction.reply({ content: '❌ The queue is empty.' });
+            const emptyEmbed = new EmbedBuilder()
+                .setColor('#6C757D')
+                .setTitle('📃 Music Queue')
+                .setDescription('🔇 **The queue is empty**\n\nAdd some music to get started!')
+                .addFields(
+                    { name: '💡 How to add music', value: 'Use `/play-music play` with a YouTube URL', inline: false }
+                )
+                .setFooter({ text: '🎶 Music Player' })
+                .setTimestamp();
+            
+            // Simple control for empty queue (just leave button)
+            const emptyControlRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`music_leave_${interaction.guildId}`)
+                    .setLabel('Leave Voice Channel')
+                    .setStyle(ButtonStyle.Danger)
+            );
+            
+            return interaction.update({ embeds: [emptyEmbed], components: [emptyControlRow] });
         }
         
         let queueText = '';
+        let totalSongs = 0;
         
         if (currentSong) {
-            queueText += `**🎵 Now Playing:**\n${currentSong.title}\n\n`;
+            const elapsed = Math.floor((Date.now() - currentSong.startTime) / 1000);
+            const progress = currentSong.duration > 0 ? Math.floor((elapsed / currentSong.duration) * 100) : 0;
+            const progressBar = '▓'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+            
+            queueText += `**🎵 Currently Playing:**\n`;
+            queueText += `**${currentSong.title}**\n`;
+            queueText += `by ${currentSong.channel}\n`;
+            queueText += `${progressBar} ${Math.min(progress, 100)}%\n\n`;
+            totalSongs++;
         }
         
         if (player.queue.length > 0) {
-            queueText += `**📃 Up Next:**\n`;
-            const queueList = player.queue.slice(0, 10).map((song, index) => 
-                `${index + 1}. ${song.title}`
+            queueText += `**📃 Up Next (${player.queue.length} songs):**\n`;
+            const queueList = player.queue.slice(0, 8).map((song, index) => 
+                `\`${index + 1}.\` **${song.title}**\n   by ${song.channel}`
             ).join('\n');
             queueText += queueList;
             
-            if (player.queue.length > 10) {
-                queueText += `\n... and ${player.queue.length - 10} more`;
+            if (player.queue.length > 8) {
+                queueText += `\n\n*...and ${player.queue.length - 8} more songs*`;
             }
+            totalSongs += player.queue.length;
         }
         
         const embed = new EmbedBuilder()
             .setColor('#0099ff')
             .setTitle('📃 Music Queue')
             .setDescription(queueText)
-            .setFooter({ text: `Total songs: ${player.queue.length + (currentSong ? 1 : 0)} | ${BOT_VERSION}` })
+            .addFields(
+                { name: '📊 Queue Stats', value: `${totalSongs} total song${totalSongs !== 1 ? 's' : ''}`, inline: true },
+                { name: '🎛️ Controls', value: 'Use the buttons below to control playback', inline: true }
+            )
+            .setFooter({ text: '🎶 Music Player | Use controls below for quick access' })
             .setTimestamp();
         
-        await interaction.reply({ embeds: [embed] });
+        // Media control buttons for queue view
+        const controlRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`music_pause_${interaction.guildId}`)
+                .setLabel('⏸Pause')
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId(`music_skip_${interaction.guildId}`)
+                .setLabel('Skip')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`music_stop_${interaction.guildId}`)
+                .setLabel('Stop')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`music_leave_${interaction.guildId}`)
+                .setLabel('Leave')
+                .setStyle(ButtonStyle.Danger)
+        );
+        
+        await interaction.update({ embeds: [embed], components: [controlRow] });
     }
     
     // Leave voice channel
@@ -778,12 +1025,13 @@ class MusicManager {
         const player = this.players.get(guildId);
         
         if (!player || !player.connection) {
-            return interaction.reply({ content: '❌ Not connected to a voice channel.' });
+            return interaction.update({ content: '❌ Not connected to a voice channel.', embeds: [], components: [] });
         }
         
         // Clean up
         player.audioPlayer.stop();
         player.queue = [];
+        player.lastMusicMessage = null; // Clear message reference
         this.currentlyPlaying.delete(guildId);
         
         if (player.currentResource) {
@@ -795,7 +1043,7 @@ class MusicManager {
         player.connection.destroy();
         this.players.delete(guildId);
         
-        await interaction.reply({ embeds: [left] });
+        await interaction.update({ embeds: [left], components: [] });
     }
     
     // Download current song
@@ -829,11 +1077,15 @@ class MusicManager {
                 content: `🔄 Downloading **${currentSong.title}**...\nThis may take a moment depending on the song length.` 
             });
             
-            // Download the audio stream
+            // Download the audio stream with optimized settings
             const audioStream = ytdl(currentSong.url, {
                 filter: 'audioonly',
-                quality: 'highestaudio',
-                format: 'mp3'
+                quality: 'highestaudio', // Consistent with streaming quality to avoid 403 errors
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    }
+                }
             });
             
             // Create write stream
@@ -859,16 +1111,18 @@ class MusicManager {
                 
                 // File too large for Discord
                 const embed = new EmbedBuilder()
-                    .setColor('#FF6B6B')
+                    .setColor('#FFA500')
                     .setTitle('📥 File Too Large for Discord')
-                    .setDescription(`**${currentSong.title}** is too large (${fileSizeInMB.toFixed(1)}MB) for Discord upload.\n\nDiscord has a 25MB file size limit. Please try a shorter song or use the command '/play-music download' for other options.`)
+                    .setDescription(`This song is too big to send through Discord, but you can still enjoy it here!`)
                     .addFields(
-                        { name: '🎵 Song', value: `\`\`\`${currentSong.title}\`\`\`` },
-                        { name: '⏱️ Duration', value: `\`\`\`${this.formatDuration(currentSong.duration) || 'Unknown'}\`\`\``, inline: true },
-                        { name: '� File Size', value: `\`\`\`${fileSizeInMB.toFixed(1)} MB\`\`\``, inline: true }
+                        { name: '🎵 Song', value: `**${currentSong.title}**`, inline: false },
+                        { name: '📁 File Size', value: `${fileSizeInMB.toFixed(1)} MB`, inline: true },
+                        { name: '⚠️ Discord Limit', value: '25 MB maximum', inline: true },
+                        { name: '⏱️ Duration', value: this.formatDuration(currentSong.duration) || 'Unknown', inline: true },
+                        { name: '� Suggestions', value: '• Try downloading shorter songs (under 25MB)\n• Stream the song directly from YouTube\n• Use YouTube Premium for offline downloads', inline: false }
                     )
                     .setThumbnail(currentSong.thumbnail)
-                    .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+                    .setFooter({ text: '🎶 Music Player | File size limitation' })
                     .setTimestamp();
                 
                 return await interaction.editReply({ 
@@ -881,16 +1135,19 @@ class MusicManager {
             const attachment = new AttachmentBuilder(filepath, { name: filename });
             
             const embed = new EmbedBuilder()
-                .setColor('#00FF00')
-                .setTitle('📥 Download Complete!')
-                .setDescription(`**${currentSong.title}**\nby ${currentSong.channel}`)
+                .setColor('#00FF7F')
+                .setTitle('📥 Download Ready!')
+                .setDescription(`Your download is complete and ready to enjoy!`)
                 .addFields(
-                    { name: '📁 File Size', value: `\`\`\`${fileSizeInMB.toFixed(2)} MB\`\`\``, inline: true },
-                    { name: '⏱️ Duration', value: `\`\`\`${this.formatDuration(currentSong.duration) || 'Unknown'}\`\`\``, inline: true },
-                    { name: '🎵 Format', value: `\`\`\`MP3 Audio\`\`\``, inline: true }
+                    { name: '🎵 Song', value: `**${currentSong.title}**`, inline: false },
+                    { name: '🎤 Artist', value: currentSong.channel, inline: true },
+                    { name: '📁 Size', value: `${fileSizeInMB.toFixed(2)} MB`, inline: true },
+                    { name: '⏱️ Duration', value: this.formatDuration(currentSong.duration) || 'Unknown', inline: true },
+                    { name: '� Format', value: 'MP3 Audio (High Quality)', inline: true },
+                    { name: '💡 Note', value: 'File will be automatically deleted in 30 seconds', inline: true }
                 )
                 .setThumbnail(currentSong.thumbnail)
-                .setFooter({ text: `Requested by ${interaction.user.tag} | ${BOT_VERSION}` })
+                .setFooter({ text: `🎶 Downloaded by ${interaction.user.displayName}` })
                 .setTimestamp();
             
             const playButton = new ButtonBuilder()
@@ -912,28 +1169,28 @@ class MusicManager {
                 try {
                     if (fs.existsSync(filepath)) {
                         fs.unlinkSync(filepath);
-                        console.log(`Cleaned up downloaded file: ${filename}`);
                     }
                 } catch (error) {
-                    console.log(`Failed to clean up file ${filename}:`, error.message);
+                    global.reportError(error, 'Play-Music-FileCleanup', 'Media');
                 }
             }, 30000); // Delete after 30 seconds
             
         } catch (error) {
-            console.error('Download error:', error);
+            global.reportError(error, 'Play-Music-Download', 'Media');
             
             // Show error message without external fallbacks
             const embed = new EmbedBuilder()
                 .setColor('#FF6B6B')
                 .setTitle('📥 Download Failed')
-                .setDescription(`Failed to download **${currentSong.title}** directly.`)
+                .setDescription(`Sorry, we couldn't download this song right now.`)
                 .addFields(
-                    { name: '❌ Error', value: `\`\`\`${error.message}\`\`\`` },
-                    { name: '🎵 Song', value: `\`\`\`${currentSong.title}\`\`\`` },
-                    { name: '📺 Channel', value: `\`\`\`${currentSong.channel}\`\`\``, inline: true }
+                    { name: '🎵 Song', value: `**${currentSong.title}**`, inline: false },
+                    { name: '🎤 Artist', value: currentSong.channel, inline: true },
+                    { name: '❌ Issue', value: 'Download temporarily unavailable', inline: true },
+                    { name: '� What you can do', value: '• Try again in a few minutes\n• Check if the song is still available on YouTube\n• Try downloading a different song', inline: false }
                 )
                 .setThumbnail(currentSong.thumbnail)
-                .setFooter({ text: `Requested by ${interaction.user.tag} | Try again later | ${BOT_VERSION}` })
+                .setFooter({ text: '🎶 Music Player | Try again later' })
                 .setTimestamp();
             
             await interaction.editReply({ 
@@ -943,18 +1200,66 @@ class MusicManager {
         }
     }
     
-    // Handle button interactions for download
+    // Handle button interactions for download and media controls
     async handleButtonInteraction(interaction) {
-        if (interaction.customId.startsWith('download_song_')) {
-            // Extract guild ID from custom ID
-            const guildId = interaction.customId.replace('download_song_', '');
-            
-            // Set the guild ID for the interaction if it matches
+        const customId = interaction.customId;
+        
+        // Download button
+        if (customId.startsWith('download_song_')) {
+            const guildId = customId.replace('download_song_', '');
             if (interaction.guildId === guildId) {
                 await this.downloadCurrentSong(interaction);
             } else {
                 await interaction.reply({
                     content: '❌ This download button is not valid for this server.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+            return;
+        }
+        
+        // Media control buttons
+        if (customId.startsWith('music_')) {
+            const [, action, guildId] = customId.split('_');
+            
+            if (interaction.guildId !== guildId) {
+                await interaction.reply({
+                    content: '❌ This control is not valid for this server.',
+                    flags: MessageFlags.Ephemeral
+                });
+                return;
+            }
+            
+            try {
+                switch (action) {
+                    case 'pause':
+                        await this.pause(interaction);
+                        break;
+                    case 'resume':
+                        await this.resume(interaction);
+                        break;
+                    case 'skip':
+                        await this.skip(interaction);
+                        break;
+                    case 'stop':
+                        await this.stop(interaction);
+                        break;
+                    case 'queue':
+                        await this.queue(interaction);
+                        break;
+                    case 'leave':
+                        await this.leave(interaction);
+                        break;
+                    default:
+                        await interaction.reply({
+                            content: '❌ Unknown control action.',
+                            flags: MessageFlags.Ephemeral
+                        });
+                }
+            } catch (error) {
+                global.reportError(error, 'Play-Music-ButtonControl', 'Media');
+                await interaction.reply({
+                    content: '❌ An error occurred while processing your request.',
                     flags: MessageFlags.Ephemeral
                 });
             }
@@ -966,68 +1271,23 @@ class MusicManager {
 const musicManager = new MusicManager();
 
 // Initialize YouTube Mix cache cleaning
-const { setupCacheCleaning } = require('./YouTubeMixIntegration');
+const { setupCacheCleaning } = require(path.join(__dirname, 'modules', 'YouTubeMixIntegration'));
 setupCacheCleaning();
 
 module.exports = {
     data: new SlashCommandBuilder()
-    .setName('play-music')
-    .setDescription('Play music from YouTube (videos, playlists, and mixes supported)')
-    .addStringOption(option =>
-        option.setName('controls')
-        .setDescription('Player Controls')
-        .addChoices(
-            {name: 'Play', value: 'play'},
-            {name: 'Pause', value: 'pause'},
-            { name: 'Resume', value: 'resume' },
-            {name: 'Skip', value: 'skip'},
-            {name: 'Stop', value: 'stop'},
-            {name: 'Queue', value: 'queue'},
-            {name: 'Download Current Song', value: 'download'},
-            {name: 'Leave', value: 'leave'}
-        )
-        .setRequired(true)
-    )
-    .addStringOption(option => 
-        option.setName('url')
-        .setDescription('YouTube URL (video, playlist, or mix - ytpl will auto-detect)')
-        .setRequired(false)
-    ),
+        .setName('play-music')
+        .setDescription('Play music from YouTube (videos, playlists, and mixes supported)')
+        .addStringOption(option => 
+            option.setName('url')
+            .setDescription('YouTube URL (video, playlist, or mix)')
+            .setRequired(true)
+        ),
 
     execute: async (interaction) => {
         try{
-            const action = interaction.options.getString('controls');
             const url = interaction.options.getString('url');
-
-            switch(action){
-                case 'play':
-                    if(!url){
-                        return interaction.reply({embeds: [failedtoplay]});
-                    }
-                    await musicManager.play(interaction);
-                    break;
-                case 'pause':
-                    await musicManager.pause(interaction);
-                    break;
-                case 'resume':
-                    await musicManager.resume(interaction);
-                    break;
-                case 'skip':
-                    await musicManager.skip(interaction);
-                    break;
-                case 'stop':
-                    await musicManager.stop(interaction);
-                    break;
-                case 'queue': 
-                    await musicManager.queue(interaction);
-                    break;
-                case 'download':
-                    await musicManager.downloadCurrentSong(interaction);
-                    break;
-                case 'leave':
-                    await musicManager.leave(interaction);
-                    break;
-            }
+            await musicManager.play(interaction);
         }catch(error){
             await interaction.reply({embeds: [bug]});
             global.reportError(error, 'Play-Music', 'Media');
