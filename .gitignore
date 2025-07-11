@@ -10,3 +10,4 @@ downloads/*.mp4
 downloads/*.webm
 downloads/*.wav
 downloads/*.m4a
+/handlers/twitch/twitchData.json

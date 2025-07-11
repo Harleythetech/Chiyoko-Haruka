@@ -1,6 +1,6 @@
 {
   "name": "chiyoko-haruka",
-  "version": "11.0.0-Catalyst",
+  "version": "11.0.1-Catalyst",
   "description": "<p align=\"center\"><img src=\"https://i.imgur.com/mwOFCBO.png\" width=\"260\" height=\"220\"></p>",
   "main": "index.js",
   "dependencies": {
