@@ -1,0 +1,55 @@
+{
+  "sources": [
+    {
+      "id": "stevenblack-unified",
+      "url": "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts",
+      "name": "StevenBlack Unified Hosts",
+      "type": "hosts",
+      "description": "Unified hosts file with base extensions for adware and malware protection",
+      "enabled": true,
+      "addedAt": "2025-01-01T00:00:00.000Z",
+      "lastUpdated": "2025-07-11T10:08:28.273Z"
+    },
+    {
+      "id": "discord-antiscam",
+      "url": "https://raw.githubusercontent.com/Discord-AntiScam/scam-links/main/list.txt",
+      "name": "Discord AntiScam",
+      "type": "domain",
+      "description": "Community-maintained list of Discord scam and phishing domains",
+      "enabled": true,
+      "addedAt": "2025-01-01T00:00:00.000Z",
+      "lastUpdated": "2025-07-11T10:08:28.658Z"
+    },
+    {
+      "id": "hagezi-popupads",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt",
+      "name": "Hagezi PopupAds",
+      "type": "adblock",
+      "description": "Blocks popup ads and aggressive advertising domains",
+      "enabled": true,
+      "addedAt": "2025-01-01T00:00:00.000Z",
+      "lastUpdated": "2025-07-11T10:08:29.269Z"
+    },
+    {
+      "id": "hagezi-fake",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/fake.txt",
+      "name": "Hagezi Fake/Scam",
+      "type": "adblock",
+      "description": "Blocks fake shops, fake streaming sites, and other scam domains",
+      "enabled": true,
+      "addedAt": "2025-01-01T00:00:00.000Z",
+      "lastUpdated": "2025-07-11T10:08:29.561Z"
+    },
+    {
+      "id": "hagezi-pro",
+      "url": "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt",
+      "name": "Hagezi Pro",
+      "type": "adblock",
+      "description": "Professional-grade DNS blocklist with comprehensive protection",
+      "enabled": true,
+      "addedAt": "2025-01-01T00:00:00.000Z",
+      "lastUpdated": "2025-07-11T10:08:29.765Z"
+    }
+  ],
+  "lastModified": "2025-07-11T10:08:29.765Z"
+}

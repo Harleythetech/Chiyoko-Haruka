@@ -1,5 +1,7 @@
 const fetch = require('node-fetch');
 const { EmbedBuilder } = require('discord.js');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Discord Link Scanner using Direct Blocklist Fetching
@@ -10,7 +12,8 @@ const { EmbedBuilder } = require('discord.js');
  * - Multiple curated lists including Discord-AntiScam and StevenBlack hosts
  * - Local caching for performance
  * - Comprehensive scam pattern detection
- * - No external dependencies (Pi-hole, databases, etc.)
+ * - JSON-based source management
+ * - WebUI for CRUD operations
  */
 class LinkScanner {
     constructor() {
@@ -18,34 +21,9 @@ class LinkScanner {
         this.domainCache = new Map();
         this.cacheTTL = 5 * 60 * 1000; // 5 minutes
         
-        // Blocklist configuration with friendly names
-        this.blocklists = [
-            {
-                url: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts',
-                name: 'StevenBlack Unified Hosts',
-                type: 'hosts'
-            },
-            {
-                url: 'https://raw.githubusercontent.com/Discord-AntiScam/scam-links/main/list.txt',
-                name: 'Discord AntiScam',
-                type: 'domain'
-            },
-            {
-                url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt',
-                name: 'Hagezi PopupAds',
-                type: 'adblock'
-            },
-            {
-                url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/fake.txt',
-                name: 'Hagezi Fake/Scam',
-                type: 'adblock'
-            },
-            {
-                url: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt',
-                name: 'Hagezi Pro',
-                type: 'adblock'
-            }
-        ];
+        // Sources file path
+        this.sourcesFile = path.join(__dirname, 'linkScannerSources.json');
+        this.sources = { sources: [], lastModified: null };
         
         // Cache for blocklists with source tracking (refresh every hour)
         this.blocklistCache = new Map(); // domain -> {source: 'list name', type: 'detection type'}
@@ -54,8 +32,126 @@ class LinkScanner {
         
         this.isInitialized = false;
         
-        // Initialize the scanner
+        // Load sources and initialize the scanner
+        this.loadSources();
         this.initializeScanner();
+    }
+
+    /**
+     * Load sources from JSON file
+     */
+    loadSources() {
+        try {
+            if (fs.existsSync(this.sourcesFile)) {
+                const data = fs.readFileSync(this.sourcesFile, 'utf8');
+                this.sources = JSON.parse(data);
+            } else {
+                console.warn('[LINK SCANNER] Sources file not found, using empty sources list');
+            }
+        } catch (error) {
+            console.error('[LINK SCANNER] Failed to load sources:', error.message);
+            this.sources = { sources: [], lastModified: null };
+        }
+    }
+
+    /**
+     * Save sources to JSON file
+     */
+    saveSources() {
+        try {
+            this.sources.lastModified = new Date().toISOString();
+            fs.writeFileSync(this.sourcesFile, JSON.stringify(this.sources, null, 2));
+            return true;
+        } catch (error) {
+            console.error('[LINK SCANNER] Failed to save sources:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Get all sources
+     */
+    getSources() {
+        return this.sources.sources;
+    }
+
+    /**
+     * Add a new source
+     */
+    addSource(sourceData) {
+        const newSource = {
+            id: sourceData.id || `source-${Date.now()}`,
+            url: sourceData.url,
+            name: sourceData.name,
+            type: sourceData.type || 'domain',
+            description: sourceData.description || '',
+            enabled: sourceData.enabled !== false,
+            addedAt: new Date().toISOString(),
+            lastUpdated: null
+        };
+
+        // Check if source already exists
+        const existingIndex = this.sources.sources.findIndex(s => s.id === newSource.id || s.url === newSource.url);
+        if (existingIndex !== -1) {
+            throw new Error('Source with this ID or URL already exists');
+        }
+
+        this.sources.sources.push(newSource);
+        
+        if (this.saveSources()) {
+            // Invalidate cache to force refresh
+            this.blocklistLastUpdate = 0;
+            return newSource;
+        }
+        
+        throw new Error('Failed to save source');
+    }
+
+    /**
+     * Update an existing source
+     */
+    updateSource(id, updateData) {
+        const sourceIndex = this.sources.sources.findIndex(s => s.id === id);
+        if (sourceIndex === -1) {
+            throw new Error('Source not found');
+        }
+
+        const source = this.sources.sources[sourceIndex];
+        
+        // Update allowed fields
+        if (updateData.name !== undefined) source.name = updateData.name;
+        if (updateData.url !== undefined) source.url = updateData.url;
+        if (updateData.type !== undefined) source.type = updateData.type;
+        if (updateData.description !== undefined) source.description = updateData.description;
+        if (updateData.enabled !== undefined) source.enabled = updateData.enabled;
+        
+        if (this.saveSources()) {
+            // Invalidate cache to force refresh
+            this.blocklistLastUpdate = 0;
+            return source;
+        }
+        
+        throw new Error('Failed to save source');
+    }
+
+    /**
+     * Delete a source
+     */
+    deleteSource(id) {
+        const sourceIndex = this.sources.sources.findIndex(s => s.id === id);
+        if (sourceIndex === -1) {
+            throw new Error('Source not found');
+        }
+
+        const deletedSource = this.sources.sources.splice(sourceIndex, 1)[0];
+        
+        if (this.saveSources()) {
+            // Invalidate cache to force refresh
+            this.blocklistLastUpdate = 0;
+            return deletedSource;
+        }
+        
+        throw new Error('Failed to save sources');
     }
 
     /**
@@ -86,7 +182,10 @@ class LinkScanner {
         
         this.blocklistCache.clear();
         
-        for (const listConfig of this.blocklists) {
+        // Get enabled sources only
+        const enabledSources = this.sources.sources.filter(source => source.enabled);
+        
+        for (const listConfig of enabledSources) {
             try {
                 const response = await fetch(listConfig.url, {
                     timeout: 10000,
@@ -107,6 +206,12 @@ class LinkScanner {
                             });
                         }
                     });
+
+                    // Update last updated timestamp for this source
+                    const sourceIndex = this.sources.sources.findIndex(s => s.id === listConfig.id);
+                    if (sourceIndex !== -1) {
+                        this.sources.sources[sourceIndex].lastUpdated = new Date().toISOString();
+                    }
                     
                 } else {
                     console.warn(`[LINK SCANNER] Failed to fetch ${listConfig.url}: ${response.status}`);
@@ -118,6 +223,9 @@ class LinkScanner {
         }
         
         this.blocklistLastUpdate = now;
+        
+        // Save updated timestamps
+        this.saveSources();
     }
 
     /**
@@ -505,12 +613,15 @@ class LinkScanner {
      * Get scanner status and statistics
      */
     getStatus() {
+        const enabledSources = this.sources.sources.filter(s => s.enabled);
         return {
             initialized: this.isInitialized,
             totalBlockedDomains: this.blocklistCache.size,
             cacheEntries: this.domainCache.size,
             lastBlocklistUpdate: new Date(this.blocklistLastUpdate).toISOString(),
-            blocklists: this.blocklists.length
+            totalSources: this.sources.sources.length,
+            enabledSources: enabledSources.length,
+            sources: this.sources.sources
         };
     }
 }

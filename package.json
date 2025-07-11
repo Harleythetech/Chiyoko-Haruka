@@ -1,14 +1,16 @@
 {
   "name": "chiyoko-haruka",
-  "version": "10.0.0-Catalyst",
+  "version": "11.0.0-Catalyst",
   "description": "<p align=\"center\"><img src=\"https://i.imgur.com/mwOFCBO.png\" width=\"260\" height=\"220\"></p>",
   "main": "index.js",
   "dependencies": {
     "@discordjs/voice": "^0.18.0",
     "@distube/ytdl-core": "^4.16.12",
     "@distube/ytpl": "^1.2.3",
+    "axios": "^1.10.0",
     "bootstrap": "^5.3.7",
     "bootstrap-icons": "^1.13.1",
+    "cheerio": "^1.1.0",
     "cli-progress": "^3.12.0",
     "discord.js": "^14.20.0",
     "dotenv": "^16.5.0",
@@ -29,7 +31,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-only",
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Harleythetech/Chiyoko-Haruka/issues"

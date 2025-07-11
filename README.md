@@ -1,12 +1,12 @@
 <p align="center"><img src="https://i.imgur.com/mwOFCBO.png" width="260" height="220"></p>
 
-### <p align="center">Chiyoko Haruka - V5.0 - Catalyst</p>
+### <p align="center">Chiyoko Haruka - V11.0.0-Catalyst</p>
 
 ---
 
 [![Node.js](https://img.shields.io/badge/Node.js-16.x+-green.svg)](https://nodejs.org/)
 [![Discord.js](https://img.shields.io/badge/discord.js-v14.20.0-blue.svg)](https://discord.js.org/)
-[![License](https://img.shields.io/badge/license-ISC-orange.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-orange.svg)](LICENSE)
 [![PM2](https://img.shields.io/badge/PM2-Ready-brightgreen.svg)](https://pm2.keymetrics.io/)
 
 ## 📖 About
@@ -214,7 +214,7 @@ Chiyoko-Haruka/
 ### Bot Configuration (`handlers/config.json`)
 ```json
 {
-  "BOT_VERSION": "5.0.0",
+  "BOT_VERSION": "10.0.0-Catalyst",
   "INVLINK": "your_bot_invite_link_here"
 }
 ```
@@ -269,7 +269,7 @@ The bot includes a production-ready PM2 configuration with:
 
 ## 📄 License
 
-This project is licensed under the ISC License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ---
 

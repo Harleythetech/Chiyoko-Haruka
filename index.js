@@ -13,6 +13,10 @@ const config = require('./handlers/config.json');
 // Import link scanner
 const linkScanner = require('./handlers/linkScanner');
 
+// Import Twitch scraper
+const TwitchScraper = require('./handlers/twitch/TwitchScraper');
+let twitchScraper = null;
+
 // New dependencies for monitoring
 const pidusage = require('pidusage');
 const express = require('express');
@@ -45,6 +49,7 @@ const io = new Server(server);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'WEBGUI/views'));
 app.use(express.static(path.join(__dirname, 'WEBGUI/public')));
+app.use(express.json()); // Parse JSON requests
 
 // Serve Bootstrap and Bootstrap Icons locally for better performance
 app.use('/bootstrap.min.css', express.static(path.join(__dirname, 'node_modules/bootstrap/dist/css/bootstrap.min.css')));
@@ -56,6 +61,246 @@ app.use('/fonts', express.static(path.join(__dirname, 'node_modules/bootstrap-ic
 app.get('/', (req, res) => {
     res.render('index');
 });
+
+// Twitch API endpoints
+app.get('/api/twitch/guilds', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const guilds = client.guilds.cache.map(guild => ({
+        id: guild.id,
+        name: guild.name,
+        icon: guild.iconURL(),
+        memberCount: guild.memberCount,
+        hasConfig: !!twitchScraper.data.guilds[guild.id]
+    }));
+    
+    res.json({ guilds });
+});
+
+app.get('/api/twitch/guild/:guildId', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const { guildId } = req.params;
+    const guild = client.guilds.cache.get(guildId);
+    
+    if (!guild) {
+        return res.json({ error: 'Guild not found' });
+    }
+    
+    const streamers = twitchScraper.getStreamers(guildId);
+    const guildData = twitchScraper.data.guilds[guildId];
+    
+    const channels = guild.channels.cache
+        .filter(channel => channel.type === 0) // Text channels only
+        .map(channel => ({
+            id: channel.id,
+            name: channel.name
+        }));
+    
+    res.json({
+        guild: {
+            id: guild.id,
+            name: guild.name,
+            icon: guild.iconURL()
+        },
+        streamers,
+        notificationChannelId: guildData?.notificationChannelId,
+        channels
+    });
+});
+
+app.post('/api/twitch/guild/:guildId/add', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const { guildId } = req.params;
+    const { username, channelId } = req.body;
+    
+    if (!username || !channelId) {
+        return res.json({ error: 'Username and channel ID are required' });
+    }
+    
+    const result = twitchScraper.addStreamer(guildId, channelId, username, 'WebPanel');
+    res.json(result);
+});
+
+app.post('/api/twitch/guild/:guildId/remove', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const { guildId } = req.params;
+    const { username } = req.body;
+    
+    if (!username) {
+        return res.json({ error: 'Username is required' });
+    }
+    
+    const result = twitchScraper.removeStreamer(guildId, username);
+    res.json(result);
+});
+
+app.post('/api/twitch/guild/:guildId/channel', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const { guildId } = req.params;
+    const { channelId } = req.body;
+    
+    if (!channelId) {
+        return res.json({ error: 'Channel ID is required' });
+    }
+    
+    const result = twitchScraper.setNotificationChannel(guildId, channelId);
+    res.json(result);
+});
+
+app.get('/api/twitch/stats', (req, res) => {
+    if (!twitchScraper) {
+        return res.json({ error: 'Twitch scraper not initialized' });
+    }
+    
+    const stats = twitchScraper.getStats();
+    res.json(stats);
+});
+
+// ========================================
+// Link Scanner API Routes
+// ========================================
+
+app.use(express.json()); // Add JSON parsing middleware
+
+// Get all link scanner sources
+app.get('/api/linkscanner/sources', (req, res) => {
+    try {
+        const sources = linkScanner.getSources();
+        const status = linkScanner.getStatus();
+        res.json({
+            success: true,
+            sources: sources,
+            status: status
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Add a new source
+app.post('/api/linkscanner/sources', (req, res) => {
+    try {
+        const sourceData = req.body;
+        
+        // Validate required fields
+        if (!sourceData.url || !sourceData.name) {
+            return res.status(400).json({
+                success: false,
+                error: 'URL and name are required'
+            });
+        }
+        
+        const newSource = linkScanner.addSource(sourceData);
+        res.json({
+            success: true,
+            source: newSource,
+            message: 'Source added successfully'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Update an existing source
+app.put('/api/linkscanner/sources/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        
+        const updatedSource = linkScanner.updateSource(id, updateData);
+        res.json({
+            success: true,
+            source: updatedSource,
+            message: 'Source updated successfully'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Delete a source
+app.delete('/api/linkscanner/sources/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const deletedSource = linkScanner.deleteSource(id);
+        res.json({
+            success: true,
+            source: deletedSource,
+            message: 'Source deleted successfully'
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get link scanner status and statistics
+app.get('/api/linkscanner/status', (req, res) => {
+    try {
+        const status = linkScanner.getStatus();
+        res.json({
+            success: true,
+            status: status
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Force refresh blocklists
+app.post('/api/linkscanner/refresh', (req, res) => {
+    try {
+        // Reset cache to force refresh
+        linkScanner.blocklistLastUpdate = 0;
+        linkScanner.updateBlocklists().then(() => {
+            res.json({
+                success: true,
+                message: 'Blocklists refresh initiated'
+            });
+        }).catch(error => {
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ========================================
 
 // Start Server
 const PORT = process.env.PORT || 3000;
@@ -98,6 +343,12 @@ io.on('connection', (socket) => {
     
     socket.emit('hostInfo', hostInfo);
 
+    // Send initial Twitch data
+    if (twitchScraper) {
+        const twitchStats = twitchScraper.getStats();
+        socket.emit('twitchStats', twitchStats);
+    }
+
 })
 
 
@@ -137,6 +388,25 @@ function heartbeat(){
         io.emit('guildsize', client.guilds.cache.size);
         io.emit('usercount', client.users.cache.size);
         io.emit('heartbeat', ping);
+        
+        // Emit Twitch stats
+        if (twitchScraper) {
+            const twitchStats = twitchScraper.getStats();
+            io.emit('twitchStats', twitchStats);
+        }
+        
+        // Emit Link Scanner stats
+        if (linkScanner) {
+            try {
+                const linkScannerStats = {
+                    status: linkScanner.getStatus(),
+                    sources: linkScanner.getSources()
+                };
+                io.emit('linkScannerStats', linkScannerStats);
+            } catch (error) {
+                console.error('Error getting Link Scanner stats:', error);
+            }
+        }
     }, 3000);
 }
 
@@ -311,6 +581,15 @@ client.on(Events.ClientReady, c => {
     // Sends ON Signal to Log Channel when the bot is ready
     const logch = client.channels.cache.get(process.env.CHANNEL_ID);
     logch.send({embeds: [active]});
+    
+    // Initialize Twitch monitoring
+    try {
+        twitchScraper = new TwitchScraper();
+        twitchScraper.startMonitoring(client);
+    } catch (error) {
+        console.error('[TWITCH] Error initializing Twitch monitoring:', error);
+    }
+    
     // Start monitoring
     heartbeat();
     monitorResources();

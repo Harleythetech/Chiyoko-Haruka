@@ -1,0 +1,31 @@
+{
+  "guilds": {
+    "1104401369315672095": {
+      "streamers": [
+        {
+          "id": "1752219046155",
+          "username": "harleyyu_",
+          "displayName": "harleyyu_",
+          "addedBy": "WebPanel",
+          "addedAt": "2025-07-11T07:30:46.155Z",
+          "isLive": false,
+          "lastChecked": "2025-07-11T10:28:30.562Z",
+          "lastStreamTitle": null,
+          "lastGameName": null
+        },
+        {
+          "id": "1752224515160",
+          "username": "asamitsukimi",
+          "displayName": "asamitsukimi",
+          "addedBy": "WebPanel",
+          "addedAt": "2025-07-11T09:01:55.160Z",
+          "isLive": true,
+          "lastChecked": "2025-07-11T10:28:32.625Z",
+          "lastStreamTitle": "AsamiTsukimi",
+          "lastGameName": "HELP I'M SCARED! MODDED LETHAL COMPANY W/ CHAT! #Vtuber #Horror"
+        }
+      ],
+      "notificationChannelId": "1107342946535223398"
+    }
+  }
+}
