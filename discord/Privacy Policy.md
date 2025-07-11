@@ -11,7 +11,7 @@ This Privacy Policy explains how Chiyoka Haruka (the "Bot") collects, uses, and 
     Server information (e.g., server ID, member count).
     User presence data for the Play Check feature.
 
-1.2. Third-Party Integrations: The Bot uses tools to detect scams but does not share user data with these services.
+1.2. Third-Party Integrations: The Bot uses the Discord-AntiScam database to detect scam links but does not share user data with these services. The database is publicly available and maintained by the Discord-AntiScam community.
 ### 2. Data Usage
 
 2.1. The Bot processes data solely to perform its intended functions, such as moderation, scam detection, and utility features.

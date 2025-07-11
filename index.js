@@ -8,7 +8,10 @@ const folderPath = path.join(__dirname, 'Commands');
 const commandFolders = fs.readdirSync(folderPath);
 const {active, bug} = require('./handlers/embed.js');
 require('dotenv').config();
-const config = require('./handlers/config.json')
+const config = require('./handlers/config.json');
+
+// Import link scanner
+const linkScanner = require('./handlers/linkScanner');
 
 // New dependencies for monitoring
 const pidusage = require('pidusage');
@@ -355,6 +358,75 @@ client.on(Events.InteractionCreate, async interaction => {
             await interaction.followUp({embeds: [bug]});
             customLogger.error(`[ERROR - INTERACTION HANDLER] ${error}`);
         }
+    }
+});
+
+// Link Scanner - Message Handler
+client.on(Events.MessageCreate, async message => {
+    // Skip bot messages and messages without content
+    if (message.author.bot || !message.content) return;
+    
+    try {
+        // Scan the message for scam links
+        const scanResult = await linkScanner.scanMessage(message);
+        
+        if (scanResult.isScam) {
+            // Log the detection with source information
+            const detectionInfo = scanResult.detections.map(d => `${d.domain} (${d.source})`).join(', ');
+            customLogger.warn(`[LINK SCANNER] Scam link detected in ${message.guild.name} from ${message.author.username}: ${detectionInfo}`);
+            
+            // Delete the message (if bot has permissions)
+            try {
+                await message.delete();
+                customLogger.log(`[LINK SCANNER] Deleted message containing scam links from ${message.author.username}`);
+            } catch (deleteError) {
+                customLogger.error(`[LINK SCANNER] Failed to delete scam message: ${deleteError.message}`);
+            }
+            
+            // Send warning in the channel
+            const warningEmbed = linkScanner.createScamWarningEmbed(scanResult.detections, message.author);
+            
+            try {
+                const warningMessage = await message.channel.send({ 
+                    embeds: [warningEmbed],
+                    content: `⚠️ <@${message.author.id}> **Message deleted for containing scam links!**`
+                });
+                
+                // Auto-delete warning after 30 seconds to reduce spam
+                setTimeout(async () => {
+                    try {
+                        await warningMessage.delete();
+                    } catch (error) {
+                        // Ignore errors if message is already deleted
+                    }
+                }, 30000);
+                
+            } catch (embedError) {
+                customLogger.error(`[LINK SCANNER] Failed to send warning embed: ${embedError.message}`);
+            }
+            
+            // Try to DM the user with more information
+            try {
+                const dmDetectionList = scanResult.detections.map(d => `• \`${d.domain}\` - *Detected by ${d.source}*`).join('\n');
+                const dmEmbed = linkScanner.createScamWarningEmbed(scanResult.detections, message.author)
+                    .setTitle('🚨 Your message was flagged for scam content')
+                    .setDescription(
+                        `Your message in **${message.guild.name}** was automatically deleted because it contained known scam/phishing links.\n\n` +
+                        `**Detected domains:**\n${dmDetectionList}\n\n` +
+                        `If you believe this was a mistake, please contact the server moderators.`
+                    );
+                
+                await message.author.send({ embeds: [dmEmbed] });
+                customLogger.log(`[LINK SCANNER] Sent DM warning to ${message.author.username}`);
+                
+            } catch (dmError) {
+                // User might have DMs disabled - this is fine
+                customLogger.log(`[LINK SCANNER] Could not DM ${message.author.username} (DMs likely disabled)`);
+            }
+        }
+        
+    } catch (error) {
+        customLogger.error(`[LINK SCANNER] Error scanning message: ${error.message}`);
     }
 });
 

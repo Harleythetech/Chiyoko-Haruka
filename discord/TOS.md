@@ -32,9 +32,13 @@ Welcome to Chiyoka Haruka! By using this Discord bot (the "Bot"), you agree to t
 5.1. The Play Check feature accesses users' rich presence statuses. This data is not stored or shared by the Bot.
 ### 6. Scam Detection
 
-6.1. The Bot utilizes the stop-discord-phishing npm package to identify and flag potential scams.
+6.1. The Bot utilizes the Discord-AntiScam database to identify and flag potential scams and phishing links.
 
-6.2. The Bot does not guarantee 100% accuracy in scam detection.
+6.2. The Bot automatically deletes messages containing known scam links and provides educational warnings to users.
+
+6.3. The scam database is maintained by the Discord-AntiScam community and contains over 24,000 known malicious domains.
+
+6.4. The Bot does not guarantee 100% accuracy in scam detection, and users should remain vigilant.
 ### 7. Liability
 
 7.1. The Bot is provided "as-is" without warranties of any kind.
