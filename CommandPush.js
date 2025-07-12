@@ -58,6 +58,7 @@ switch (input) {
                 process.stdout.write(
                     `\n[SUCCESS - PUSH TEST COMMANDS] Successfully reloaded ${data.length} application (/) commands.\n`
                 );
+                process.exit(0);
             } catch (error) {
                 process.stdout.write(`\n[ERROR - PUSH TEST COMMANDS] ${error}\n`);
             }
@@ -90,6 +91,7 @@ switch (input) {
                 process.stdout.write(
                     `\n[SUCCESS - PUSH GLOBAL COMMANDS] Successfully reloaded ${data.length} application (/) commands.\n`
                 );
+                process.exit(0);
             } catch (error) {
                 process.stdout.write(`\n[ERROR - PUSH GLOBAL COMMANDS] ${error}\n`);
             }
@@ -147,6 +149,7 @@ switch (input) {
                 bar.stop();
 
                 process.stdout.write("\n[SUCCESS - CLEAR COMMANDS] All commands have been deleted.\n");
+                process.exit(0);
             } catch (error) {
                 process.stdout.write(`\n[ERROR - CLEAR COMMANDS] ${error}\n`);
             }
