@@ -2,7 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('disc
 const axios = require('axios');
 
 // Get the WebGUI base URL (assuming it's running on the same server)
-const WEBGUI_BASE_URL = `http://localhost:${process.env.PORT}`;
+const WEBGUI_BASE_URL = `http://127.0.0.1:${process.env.PORT}`;
 
 module.exports = {
     data: new SlashCommandBuilder()
