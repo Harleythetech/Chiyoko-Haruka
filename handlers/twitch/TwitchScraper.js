@@ -17,7 +17,46 @@ class TwitchScraper {
         this.dataFile = path.join(__dirname, 'twitchData.json');
         this.data = { guilds: {} };
         this.lastDataReload = 0; // Track when we last reloaded data
+        
+        // Initialize caches (will be created lazily)
+        this.statusCache = null;
+        this.apiCache = null;
+        
         this.loadData();
+    }
+    
+    /**
+     * Lazy initialization of caches
+     */
+    initializeCaches() {
+        if (this.statusCache && this.apiCache) {
+            return; // Already initialized
+        }
+        
+        try {
+            // Try to get memory manager - it might not be available during early startup
+            const memoryManager = require('../memoryManager');
+            
+            // Cache for streamer status (2 minutes TTL, max 1000 entries)
+            this.statusCache = memoryManager.createLRUCache('twitch-status', {
+                max: 1000,
+                ttl: 2 * 60 * 1000, // 2 minutes
+                allowStale: true
+            });
+            
+            // Cache for API responses (5 minutes TTL, max 500 entries)
+            this.apiCache = memoryManager.createLRUCache('twitch-api', {
+                max: 500,
+                ttl: 5 * 60 * 1000, // 5 minutes
+                allowStale: false
+            });
+            
+        } catch (error) {
+            // Fallback to Map-based caches if memory manager is not available
+            console.warn('[TWITCH SCRAPER] Memory manager not available, using fallback caches');
+            this.statusCache = new Map();
+            this.apiCache = new Map();
+        }
     }
 
     // Load data from JSON file
@@ -150,6 +189,16 @@ class TwitchScraper {
 
     // Check if streamer is live using Twitch GraphQL API
     async checkIfLive(username) {
+        // Ensure caches are initialized
+        this.initializeCaches();
+        
+        // Check cache first
+        const cacheKey = username.toLowerCase();
+        const cached = this.apiCache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+        
         try {
             const payload = [{
                 operationName: "StreamMetadata",
@@ -199,14 +248,18 @@ class TwitchScraper {
 
             if (result.errors) {
                 console.error(`[TWITCH SCRAPER] GraphQL errors for ${username}:`, result.errors);
-                return { isLive: false, error: 'GraphQL API error' };
+                const errorResult = { isLive: false, error: 'GraphQL API error' };
+                this.apiCache.set(cacheKey, errorResult);
+                return errorResult;
             }
 
             const user = result.data.user;
             
             if (!user) {
                 console.log(`[TWITCH SCRAPER] User ${username} not found`);
-                return { isLive: false, error: 'User not found' };
+                const notFoundResult = { isLive: false, error: 'User not found' };
+                this.apiCache.set(cacheKey, notFoundResult);
+                return notFoundResult;
             }
 
             const stream = user.stream;
@@ -220,7 +273,7 @@ class TwitchScraper {
                 uptime = Math.floor((now - start) / 60000); // uptime in minutes
             }
 
-            return {
+            const streamData = {
                 isLive: isLive,
                 title: stream?.title || user.displayName,
                 game: stream?.game?.displayName || stream?.game?.name || null,
@@ -235,9 +288,23 @@ class TwitchScraper {
                 error: null
             };
 
+            // Cache the result
+            this.apiCache.set(cacheKey, streamData);
+            return streamData;
+
         } catch (error) {
             console.error(`[TWITCH SCRAPER] Error checking ${username} via GraphQL:`, error.message);
-            return { isLive: false, error: error.message };
+            const errorResult = { isLive: false, error: error.message };
+            
+            // Cache error for shorter time to allow faster retry
+            if (typeof this.apiCache.set === 'function') {
+                // LRU cache supports TTL
+                this.apiCache.set(cacheKey, errorResult, { ttl: 30000 }); // 30 seconds
+            } else {
+                // Fallback Map cache - just set normally
+                this.apiCache.set(cacheKey, errorResult);
+            }
+            return errorResult;
         }
     }
 

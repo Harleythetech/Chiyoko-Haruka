@@ -41,10 +41,145 @@ class MusicManager {
         this.players = new Map();
         this.currentlyPlaying = new Map();
         this.videoExtractor = new VideoInfoExtractor();
+        
+        // Get memory manager and create caches
+        const memoryManager = require('../../handlers/memoryManager');
+        
+        // Cache for video info (30 minutes TTL, max 200 entries)
+        this.videoInfoCache = memoryManager.createLRUCache('music-videoInfo', {
+            max: 200,
+            ttl: 30 * 60 * 1000, // 30 minutes
+            allowStale: false
+        });
+        
+        // Cache for thumbnails (2 hours TTL, max 300 entries)
+        this.thumbnailCache = memoryManager.createLRUCache('music-thumbnails', {
+            max: 300,
+            ttl: 2 * 60 * 60 * 1000, // 2 hours
+            allowStale: true
+        });
+        
+        // WeakMap for storing temporary player resources
+        this.playerResources = memoryManager.createWeakMap('music-playerResources');
+        
+        // Set up cleanup intervals
+        this.setupCleanupIntervals();
     }
     
+    // Setup cleanup intervals for memory management
+    setupCleanupIntervals() {
+        // Clean up inactive players every 5 minutes
+        setInterval(() => {
+            this.cleanupInactivePlayers();
+        }, 5 * 60 * 1000); // 5 minutes
+        
+        // Clean up old download files every 10 minutes
+        setInterval(() => {
+            this.cleanupDownloadFiles();
+        }, 10 * 60 * 1000); // 10 minutes
+    }
+    
+    // Clean up inactive players to free memory
+    cleanupInactivePlayers() {
+        const now = Date.now();
+        const inactiveThreshold = 30 * 60 * 1000; // 30 minutes
+        
+        for (const [guildId, player] of this.players.entries()) {
+            const currentSong = this.currentlyPlaying.get(guildId);
+            
+            // Check if player has been inactive
+            if (!currentSong || 
+                player.audioPlayer.state.status === 'idle' && 
+                (!player.lastActivity || now - player.lastActivity > inactiveThreshold)) {
+                
+                this.cleanupPlayer(guildId);
+                global.reportLog(`Cleaned up inactive player for guild ${guildId}`, 'Cleanup', 'MusicManager');
+            }
+        }
+    }
+    
+    // Clean up a specific player
+    cleanupPlayer(guildId) {
+        const player = this.players.get(guildId);
+        if (!player) return;
+        
+        try {
+            // Stop audio player
+            if (player.audioPlayer) {
+                player.audioPlayer.stop();
+                player.audioPlayer.removeAllListeners();
+            }
+            
+            // Clean up current resource
+            if (player.currentResource) {
+                if (player.currentResource.audioPlayer) {
+                    player.currentResource.audioPlayer = null;
+                }
+                if (player.currentResource.encoder) {
+                    player.currentResource.encoder.destroy();
+                }
+                player.currentResource = null;
+            }
+            
+            // Clear queue
+            player.queue = [];
+            player.lastMusicMessage = null;
+            
+            // Destroy connection if exists
+            if (player.connection) {
+                player.connection.destroy();
+            }
+            
+            // Remove from maps
+            this.players.delete(guildId);
+            this.currentlyPlaying.delete(guildId);
+            
+        } catch (error) {
+            global.reportError(error, 'PlayerCleanup', 'MusicManager');
+        }
+    }
+    
+    // Clean up old download files
+    cleanupDownloadFiles() {
+        const fs = require('fs');
+        const path = require('path');
+        
+        try {
+            const downloadsDir = path.join(process.cwd(), 'downloads');
+            if (!fs.existsSync(downloadsDir)) return;
+            
+            const files = fs.readdirSync(downloadsDir);
+            const now = Date.now();
+            let cleaned = 0;
+            
+            for (const file of files) {
+                const filePath = path.join(downloadsDir, file);
+                const stats = fs.statSync(filePath);
+                
+                // Delete files older than 30 minutes
+                if (now - stats.mtime.getTime() > 30 * 60 * 1000) {
+                    fs.unlinkSync(filePath);
+                    cleaned++;
+                }
+            }
+            
+            if (cleaned > 0) {
+                global.reportLog(`Cleaned ${cleaned} old download files`, 'Cleanup', 'MusicManager');
+            }
+            
+        } catch (error) {
+            global.reportError(error, 'FileCleanup', 'MusicManager');
+        }
+    }
+
     // Helper function to get HD thumbnail from YouTube URL
     getHDThumbnail(url, fallbackThumbnail = null) {
+        // Check cache first
+        const cached = this.thumbnailCache.get(url);
+        if (cached) {
+            return cached;
+        }
+        
         try {
             // Extract video ID from URL
             const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/);
@@ -52,13 +187,21 @@ class MusicManager {
             if (videoIdMatch && videoIdMatch[1]) {
                 const videoId = videoIdMatch[1];
                 // Use maxresdefault for highest quality, fallback to hqdefault if not available
-                return `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+                const hdThumbnail = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+                
+                // Cache the result
+                this.thumbnailCache.set(url, hdThumbnail);
+                return hdThumbnail;
             }
             
             // If we can't extract video ID, use the fallback
-            return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+            const result = fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+            this.thumbnailCache.set(url, result);
+            return result;
         } catch (error) {
-            return fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+            const result = fallbackThumbnail || `https://img.youtube.com/vi/default/hqdefault.jpg`;
+            this.thumbnailCache.set(url, result);
+            return result;
         }
     }
 
@@ -202,6 +345,25 @@ class MusicManager {
     
     // Handle single video
     async handleSingleVideo(interaction, url, player) {
+        // Check cache first
+        const cached = this.videoInfoCache.get(url);
+        if (cached) {
+            const song = {
+                title: cached.title,
+                url: url,
+                duration: cached.duration,
+                thumbnail: this.getHDThumbnail(url, cached.thumbnail),
+                channel: cached.channel,
+                requestedBy: interaction.user.username,
+                extractMethod: 'cache'
+            };
+            
+            player.queue.push(song);
+            return interaction.editReply({
+                content: `✅ **${song.title}** by **${song.channel}** has been added to the queue! (from cache)`
+            });
+        }
+        
         try {
             // Try fast method first for better user experience
             let videoInfo;
@@ -248,11 +410,18 @@ class MusicManager {
                     };
                 }
             }
-            
-            if (!videoInfo.success) {
+              if (!videoInfo.success) {
                 throw new Error(videoInfo.error);
             }
             
+            // Cache the video info for future use
+            this.videoInfoCache.set(url, {
+                title: videoInfo.title,
+                duration: videoInfo.duration,
+                thumbnail: videoInfo.thumbnail,
+                channel: videoInfo.channel
+            });
+
             const song = {
                 title: videoInfo.title,
                 url: url,

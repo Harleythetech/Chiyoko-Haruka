@@ -10,31 +10,61 @@ const path = require('path');
  * Features:
  * - Direct blocklist fetching from GitHub sources
  * - Multiple curated lists including Discord-AntiScam and StevenBlack hosts
- * - Local caching for performance
+ * - LRU caching for performance and memory efficiency
  * - Comprehensive scam pattern detection
  * - JSON-based source management
  * - WebUI for CRUD operations
  */
 class LinkScanner {
     constructor() {
-        // Cache for domain checks (5 minutes TTL)
-        this.domainCache = new Map();
-        this.cacheTTL = 5 * 60 * 1000; // 5 minutes
-        
-        // Sources file path
+        // Initialize basic properties
         this.sourcesFile = path.join(__dirname, 'linkScannerSources.json');
         this.sources = { sources: [], lastModified: null };
-        
-        // Cache for blocklists with source tracking (refresh every hour)
-        this.blocklistCache = new Map(); // domain -> {source: 'list name', type: 'detection type'}
         this.blocklistLastUpdate = 0;
         this.blocklistTTL = 60 * 60 * 1000; // 1 hour
-        
         this.isInitialized = false;
+        
+        // Initialize caches (will be created lazily)
+        this.domainCache = null;
+        this.blocklistCache = null;
         
         // Load sources and initialize the scanner
         this.loadSources();
         this.initializeScanner();
+    }
+    
+    /**
+     * Lazy initialization of caches
+     */
+    initializeCaches() {
+        if (this.domainCache && this.blocklistCache) {
+            return; // Already initialized
+        }
+        
+        try {
+            // Try to get memory manager - it might not be available during early startup
+            const memoryManager = require('./memoryManager');
+            
+            // Create LRU cache for domain checks (5 minutes TTL, max 1000 entries)
+            this.domainCache = memoryManager.createLRUCache('linkScanner-domains', {
+                max: 1000,
+                ttl: 5 * 60 * 1000, // 5 minutes
+                allowStale: false
+            });
+            
+            // Create LRU cache for blocklists with source tracking (1 hour TTL, max 50000 entries)
+            this.blocklistCache = memoryManager.createLRUCache('linkScanner-blocklist', {
+                max: 50000,
+                ttl: 60 * 60 * 1000, // 1 hour
+                allowStale: true
+            });
+            
+        } catch (error) {
+            // Fallback to Map-based caches if memory manager is not available
+            console.warn('[LINK SCANNER] Memory manager not available, using fallback caches');
+            this.domainCache = new Map();
+            this.blocklistCache = new Map();
+        }
     }
 
     /**
@@ -159,6 +189,9 @@ class LinkScanner {
      */
     async initializeScanner() {
         try {
+            // Initialize caches first
+            this.initializeCaches();
+            
             await this.updateBlocklists();
             
             this.isInitialized = true;
@@ -180,7 +213,16 @@ class LinkScanner {
             return; // Cache still valid
         }
         
-        this.blocklistCache.clear();
+        // Ensure caches are initialized
+        this.initializeCaches();
+        
+        // Clear cache using appropriate method
+        if (typeof this.blocklistCache.clear === 'function') {
+            this.blocklistCache.clear();
+        } else {
+            // Fallback for Map-based cache
+            this.blocklistCache.clear();
+        }
         
         // Get enabled sources only
         const enabledSources = this.sources.sources.filter(source => source.enabled);
@@ -226,6 +268,11 @@ class LinkScanner {
         
         // Save updated timestamps
         this.saveSources();
+        
+        // Trigger garbage collection after major cache update
+        if (global.gc) {
+            global.gc();
+        }
     }
 
     /**
@@ -298,17 +345,17 @@ class LinkScanner {
     }
 
     /**
-     * Check if a domain is blocked
-     */
-    /**
      * Check if a domain is blocked and return detailed information
      */
     async isDomainBlocked(domain) {
+        // Ensure caches are initialized
+        this.initializeCaches();
+        
         // Check cache first
         const cacheKey = domain.toLowerCase();
         const cached = this.domainCache.get(cacheKey);
-        if (cached && Date.now() < cached.expiry) {
-            return cached.result;
+        if (cached) {
+            return cached;
         }
 
         // Update blocklists if needed
@@ -322,12 +369,12 @@ class LinkScanner {
         };
 
         // Check against blocklist cache
-        if (this.blocklistCache.has(cacheKey)) {
-            const sourceInfo = this.blocklistCache.get(cacheKey);
+        const blocklistResult = this.blocklistCache.get(cacheKey);
+        if (blocklistResult) {
             result = {
                 isBlocked: true,
-                source: sourceInfo.source,
-                type: sourceInfo.type,
+                source: blocklistResult.source,
+                type: blocklistResult.type,
                 matchedDomain: domain
             };
         }
@@ -337,12 +384,12 @@ class LinkScanner {
             const domainParts = domain.split('.');
             for (let i = 1; i < domainParts.length; i++) {
                 const parentDomain = domainParts.slice(i).join('.');
-                if (this.blocklistCache.has(parentDomain)) {
-                    const sourceInfo = this.blocklistCache.get(parentDomain);
+                const parentResult = this.blocklistCache.get(parentDomain);
+                if (parentResult) {
                     result = {
                         isBlocked: true,
-                        source: sourceInfo.source,
-                        type: sourceInfo.type,
+                        source: parentResult.source,
+                        type: parentResult.type,
                         matchedDomain: parentDomain
                     };
                     break;
@@ -364,7 +411,7 @@ class LinkScanner {
         }
 
         // Cache the result
-        this.setCacheEntry(cacheKey, result);
+        this.domainCache.set(cacheKey, result);
         return result;
     }
 
@@ -484,16 +531,6 @@ class LinkScanner {
      * Set cache entry with expiry
      */
     /**
-     * Set cache entry with expiry
-     */
-    setCacheEntry(key, result) {
-        this.domainCache.set(key, {
-            result: result,
-            expiry: Date.now() + this.cacheTTL
-        });
-    }
-
-    /**
      * Extract domains from URLs in a message
      */
     extractDomains(message) {
@@ -527,9 +564,6 @@ class LinkScanner {
         return [...new Set(domains)];
     }
 
-    /**
-     * Scan a Discord message for scam links
-     */
     /**
      * Scan a Discord message for scam links
      */
@@ -577,9 +611,6 @@ class LinkScanner {
     /**
      * Create warning embed for scam detection
      */
-    /**
-     * Create warning embed for scam detection
-     */
     createScamWarningEmbed(detections, user) {
         const domainList = detections.map(detection => {
             let emoji = '🚫';
@@ -613,11 +644,26 @@ class LinkScanner {
      * Get scanner status and statistics
      */
     getStatus() {
+        // Ensure caches are initialized
+        this.initializeCaches();
+        
         const enabledSources = this.sources.sources.filter(s => s.enabled);
+        
+        // Get cache size safely
+        let blocklistCacheSize = 0;
+        let domainCacheSize = 0;
+        
+        try {
+            blocklistCacheSize = this.blocklistCache ? this.blocklistCache.size : 0;
+            domainCacheSize = this.domainCache ? this.domainCache.size : 0;
+        } catch (error) {
+            // Ignore cache size errors
+        }
+        
         return {
             initialized: this.isInitialized,
-            totalBlockedDomains: this.blocklistCache.size,
-            cacheEntries: this.domainCache.size,
+            totalBlockedDomains: blocklistCacheSize,
+            cacheEntries: domainCacheSize,
             lastBlocklistUpdate: new Date(this.blocklistLastUpdate).toISOString(),
             totalSources: this.sources.sources.length,
             enabledSources: enabledSources.length,

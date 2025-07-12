@@ -6,7 +6,7 @@ module.exports = {
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '712M',
+      max_memory_restart: '215M',
       env: {
         NODE_ENV: 'production',
         PORT: 3000
@@ -48,7 +48,7 @@ module.exports = {
       windowsHide: true,
       
       // Additional process options for Windows
-      node_args: '--max-old-space-size=1024',
+      node_args: '--max-old-space-size=215 --expose-gc',
       
       // Health monitoring
       health_check_grace_period: 3000,
@@ -62,7 +62,7 @@ module.exports = {
       ],
       
       // Resource limits
-      max_memory_restart: '712M',
+      max_memory_restart: '215M',
       
       // Cluster settings (disabled since Discord bots shouldn't run in cluster mode)
       exec_mode: 'fork',

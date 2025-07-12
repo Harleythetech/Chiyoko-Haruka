@@ -251,9 +251,14 @@ socket.on('ResourceUsage', (data) => {
         document.getElementById('memoryProgress').style.width = `${data.memory.percent}%`;
         document.getElementById('memoryUsed').textContent = `${data.memory.used} MB`;
 
-        // Calculate and display total memory estimate (used memory / percentage * 100)
-        const totalMemoryMB = (parseFloat(data.memory.used) / parseFloat(data.memory.percent) * 100).toFixed(0);
-        document.getElementById('memoryTotal').textContent = `${totalMemoryMB} MB`;
+        // Use fixed total memory value from server instead of calculating
+        if (data.memory.total) {
+            document.getElementById('memoryTotal').textContent = `${data.memory.total} MB`;
+        } else {
+            // Fallback calculation if total is not provided
+            const totalMemoryMB = (parseFloat(data.memory.used) / parseFloat(data.memory.percent) * 100).toFixed(0);
+            document.getElementById('memoryTotal').textContent = `${totalMemoryMB} MB`;
+        }
 
         // Update Uptime
         document.getElementById('uptime').textContent = data.uptime;
@@ -264,6 +269,21 @@ socket.on('ResourceUsage', (data) => {
         document.getElementById('platform').textContent = data.process.platform.charAt(0).toUpperCase() + data.process.platform.slice(1);
         document.getElementById('architecture').textContent = data.process.arch;
         document.getElementById('startTime').textContent = data.process.startTime;
+
+        // Update Memory Management Stats
+        if (data.memory.gc) {
+            document.getElementById('gcCollections').textContent = data.memory.gc.totalCollections || 0;
+            const memoryFreedMB = ((data.memory.gc.totalMemoryFreed || 0) / (1024 * 1024)).toFixed(1);
+            document.getElementById('memoryFreed').textContent = memoryFreedMB;
+        }
+        
+        if (data.memory.caches) {
+            let totalCacheEntries = 0;
+            Object.values(data.memory.caches).forEach(cache => {
+                totalCacheEntries += cache.size || 0;
+            });
+            document.getElementById('cacheEntries').textContent = totalCacheEntries;
+        }
 
         // Estimate thread count (simplified calculation)
         const threadEstimate = Math.max(1, Math.ceil(parseFloat(data.cpu) / 10));
@@ -1530,3 +1550,19 @@ socket.on('connect', () => {
             .catch(error => console.error('Error fetching Link Scanner status:', error));
     }, 1000);
 });
+
+// Force garbage collection function
+async function forceGarbageCollection() {
+    try {
+        const response = await fetch('/api/memory/gc', { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+            alert('Garbage collection completed successfully!');
+        } else {
+            alert('Failed to run garbage collection: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error running garbage collection:', error);
+        alert('Error running garbage collection: ' + error.message);
+    }
+}

@@ -8,7 +8,7 @@
       "description": "Unified hosts file with base extensions for adware and malware protection",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T09:03:43.229Z"
+      "lastUpdated": "2025-07-12T11:47:33.775Z"
     },
     {
       "id": "discord-antiscam",
@@ -18,7 +18,7 @@
       "description": "Community-maintained list of Discord scam and phishing domains",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T09:03:43.284Z"
+      "lastUpdated": "2025-07-12T11:47:34.111Z"
     },
     {
       "id": "hagezi-popupads",
@@ -28,7 +28,7 @@
       "description": "Blocks popup ads and aggressive advertising domains",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T09:03:43.693Z"
+      "lastUpdated": "2025-07-12T11:47:34.493Z"
     },
     {
       "id": "hagezi-fake",
@@ -38,7 +38,7 @@
       "description": "Blocks fake shops, fake streaming sites, and other scam domains",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T09:03:43.721Z"
+      "lastUpdated": "2025-07-12T11:47:34.799Z"
     },
     {
       "id": "hagezi-pro",
@@ -48,8 +48,8 @@
       "description": "Professional-grade DNS blocklist with comprehensive protection",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T09:03:43.906Z"
+      "lastUpdated": "2025-07-12T11:47:34.987Z"
     }
   ],
-  "lastModified": "2025-07-12T09:03:43.906Z"
+  "lastModified": "2025-07-12T11:47:34.987Z"
 }

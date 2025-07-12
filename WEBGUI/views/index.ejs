@@ -390,6 +390,32 @@
                             </div>
                         </div>
 
+                        <!-- Memory Management Stats -->
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small fw-medium text-muted">Memory Management</span>
+                                <button class="btn btn-outline-primary btn-sm" onclick="forceGarbageCollection()">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>Force GC
+                                </button>
+                            </div>
+                            <div class="bg-body bg-opacity-50 rounded-3 p-3">
+                                <div class="row g-2 text-center">
+                                    <div class="col-4">
+                                        <div class="text-info fs-6 fw-bold" id="gcCollections">0</div>
+                                        <div class="small text-muted">GC Runs</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-success fs-6 fw-bold" id="cacheEntries">0</div>
+                                        <div class="small text-muted">Cache Items</div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="text-warning fs-6 fw-bold" id="memoryFreed">0</div>
+                                        <div class="small text-muted">MB Freed</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Connection Status -->
                         <div class="border-top border-opacity-25 pt-3">
                             <div class="d-flex align-items-center mb-2">

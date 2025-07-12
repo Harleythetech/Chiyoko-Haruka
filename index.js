@@ -194,6 +194,44 @@ app.get('/api/twitch/stats', (req, res) => {
 });
 
 // ========================================
+// Memory Management API Routes
+// ========================================
+
+// Get memory statistics
+app.get('/api/memory/stats', (req, res) => {
+    try {
+        const memStats = memoryManager.getMemoryStats();
+        res.json({
+            success: true,
+            stats: memStats
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Force garbage collection
+app.post('/api/memory/gc', (req, res) => {
+    try {
+        memoryManager.performGarbageCollection();
+        res.json({
+            success: true,
+            message: 'Garbage collection triggered'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// ========================================
+
+// ========================================
 // Link Scanner API Routes
 // ========================================
 
@@ -445,14 +483,24 @@ function monitorResources() {
             const cpuPercent = stats.cpu.toFixed(1);
             const memoryBytes = stats.memory;
             const memoryMB = (memoryBytes / (1024 * 1024)).toFixed(1);
-            const memoryPercent = Math.min((memoryBytes / (1 * 1024 * 1024 * 1024)) * 100, 100).toFixed(1);
+            
+            // Calculate percentage based on actual memory limit (215MB)
+            const memoryLimitMB = 215; // Our actual memory limit
+            const memoryPercent = Math.min((parseFloat(memoryMB) / memoryLimitMB) * 100, 100).toFixed(1);
+            
+            // Get memory manager stats
+            const memStats = memoryManager.getMemoryStats();
             
             const systemInfo = {
                 cpu: cpuPercent,
                 memory: {
                     percent: memoryPercent,
                     used: memoryMB,
-                    bytes: memoryBytes
+                    total: memoryLimitMB, // Fixed total memory value
+                    bytes: memoryBytes,
+                    detailed: memStats.memory,
+                    caches: memStats.caches,
+                    gc: memStats.gc
                 },
                 uptime: formatRuntime(stats.elapsed),
                 process: {
@@ -753,6 +801,9 @@ global.reportLog = (log, context = 'General', module = 'Unknown') => {
     customLogger.log(lcode);
 };
 
+// Import memory manager after global functions are defined
+const memoryManager = require('./handlers/memoryManager');
+
 // Error on Unhandled Rejection
 process.on('unhandledRejection', error => {
     // Don't log aborted errors as they're normal for voice streams
@@ -760,6 +811,10 @@ process.on('unhandledRejection', error => {
         customLogger.warn('[INFO] Stream operation aborted (normal for voice connections)');
     } else {
         customLogger.error(`[ERROR - UNHANDLED REJECTION] ${error}`);
+        // Trigger garbage collection on error
+        if (global.gc) {
+            global.gc();
+        }
     }
 });
 
@@ -773,6 +828,19 @@ process.on('uncaughtException', error => {
         // Only exit on serious errors, not aborted streams
         process.exit(1);
     }
+});
+
+// Graceful shutdown handling
+process.on('SIGINT', () => {
+    customLogger.log('SIGINT received, shutting down gracefully...');
+    memoryManager.shutdown();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    customLogger.log('SIGTERM received, shutting down gracefully...');
+    memoryManager.shutdown();
+    process.exit(0);
 });
 
 //Bot Login
