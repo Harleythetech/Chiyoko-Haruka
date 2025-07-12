@@ -140,6 +140,24 @@ socket.on('connect_error', (error) => {
     console.error('[DEBUG] Socket connection error:', error);
 });
 
+// Add helper function for cleaning up music sessions
+function cleanupMusicSessions() {
+    const musicSessions = document.getElementById('musicSessions');
+    const noMusicState = document.getElementById('noMusicState');
+    const activeMusicCount = document.getElementById('activeMusicCount');
+    
+    if (musicSessions) {
+        musicSessions.classList.add('d-none');
+        musicSessions.innerHTML = '';
+    }
+    if (noMusicState) {
+        noMusicState.classList.remove('d-none');
+    }
+    if (activeMusicCount) {
+        activeMusicCount.textContent = '0';
+    }
+}
+
 socket.on('disconnect', (reason) => {
     addLogEntry('ERROR', 'Disconnected from bot server');
     const gatewayStatus = document.getElementById('gatewayStatus');
@@ -154,6 +172,9 @@ socket.on('disconnect', (reason) => {
         socketStatus.textContent = 'Disconnected';
         socketStatus.className = 'ms-auto badge bg-danger bg-opacity-25 text-danger';
     }
+    
+    // Clean up music sessions when disconnected
+    cleanupMusicSessions();
 });
 
 // Bot status updates
@@ -316,10 +337,34 @@ socket.on('ResourceUsage', (data) => {
     }
 });
 
-// Music session updates
+// Music session updates with automatic cleanup
+let lastMusicUpdateTime = Date.now();
 socket.on('musicUpdate', (musicData) => {
+    lastMusicUpdateTime = Date.now();
     updateMusicSessions(musicData);
 });
+
+// Periodic check to clean up stale music sessions (every 30 seconds)
+setInterval(() => {
+    const timeSinceLastUpdate = Date.now() - lastMusicUpdateTime;
+    const musicSessions = document.getElementById('musicSessions');
+    const noMusicState = document.getElementById('noMusicState');
+    const activeMusicCount = document.getElementById('activeMusicCount');
+    
+    // If no music update for 2 minutes, assume no active sessions
+    if (timeSinceLastUpdate > 120000) { // 2 minutes
+        if (musicSessions && !musicSessions.classList.contains('d-none')) {
+            musicSessions.classList.add('d-none');
+            musicSessions.innerHTML = '';
+        }
+        if (noMusicState && noMusicState.classList.contains('d-none')) {
+            noMusicState.classList.remove('d-none');
+        }
+        if (activeMusicCount) {
+            activeMusicCount.textContent = '0';
+        }
+    }
+}, 30000); // Check every 30 seconds
 
 // Twitch stats updates
 socket.on('twitchStats', (twitchData) => {
@@ -364,11 +409,20 @@ function updateMusicSessions(musicData) {
     const musicSessions = document.getElementById('musicSessions');
     const activeMusicCount = document.getElementById('activeMusicCount');
 
+    // Always update the active music count
     if (activeMusicCount) {
         activeMusicCount.textContent = musicData.activePlayersCount || 0;
     }
 
-    if (musicData.hasActiveMusic && musicData.currentSongs && musicData.currentSongs.length > 0) {
+    // More robust check for active music sessions
+    const hasActiveSessions = musicData && 
+                             musicData.currentSongs && 
+                             Array.isArray(musicData.currentSongs) && 
+                             musicData.currentSongs.length > 0 && 
+                             (musicData.hasActiveMusic === true || musicData.activePlayersCount > 0);
+
+    if (hasActiveSessions) {
+        // Show music sessions
         if (noMusicState) {
             noMusicState.classList.add('d-none');
         }
@@ -384,17 +438,16 @@ function updateMusicSessions(musicData) {
                 musicSessions.appendChild(sessionCard);
             });
         }
-
-        // Silent updates - no logging for music session updates
     } else {
+        // Hide music sessions and show no music state
+        if (musicSessions) {
+            musicSessions.classList.add('d-none');
+            // Clear sessions to ensure clean state
+            musicSessions.innerHTML = '';
+        }
         if (noMusicState) {
             noMusicState.classList.remove('d-none');
         }
-        if (musicSessions) {
-            musicSessions.classList.add('d-none');
-        }
-
-        // Silent - no logging when music stops
     }
 }
 
@@ -406,6 +459,8 @@ function createMusicSessionCard(song, index) {
     const progressPercent = song.progressPercent || 0;
     const duration = formatDuration(song.duration);
     const elapsed = formatDuration(song.elapsedSeconds || 0);
+
+
 
     card.innerHTML = `
         <div class="card-body p-4 flex-grow-1 d-flex flex-column">
@@ -424,7 +479,7 @@ function createMusicSessionCard(song, index) {
                 </div>
                 <div class="col-auto">
                     <div class="d-flex gap-2">
-                        <a href="${song.url}" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                        <a href="${escapeHtml(song.url || '')}" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill px-3">
                             <i class="bi bi-youtube me-1"></i> YouTube
                         </a>
                     </div>
@@ -436,7 +491,7 @@ function createMusicSessionCard(song, index) {
                 <!-- Album Art -->
                 <div class="col-12 col-md-3 col-lg-2 mb-3 mb-md-0">
                     <div class="position-relative">
-                        <img src="https://i.ytimg.com/vi/${song.image}/mqdefault.jpg" 
+                        <img src="https://i.ytimg.com/vi/${escapeHtml(song.image || '')}/mqdefault.jpg" 
                              alt="Album Art" class="w-100 rounded-3 shadow"
                              style="aspect-ratio: 1; object-fit: cover;">
                         <div class="position-absolute top-50 start-50 translate-middle">
@@ -451,8 +506,8 @@ function createMusicSessionCard(song, index) {
                 <div class="col-12 col-md-9 col-lg-10 d-flex flex-column">
                     <!-- Title and Artist - Expanded -->
                     <div class="mb-3 mb-lg-4">
-                        <h5 class="mb-1 fw-bold text-truncate">${song.title || 'Unknown Title'}</h5>
-                        <p class="mb-0 text-muted fs-6">${song.Channel || song.channel || song.artist || song.uploader || song.author || 'Unknown Artist'}</p>
+                        <h5 class="mb-1 fw-bold text-truncate">${escapeHtml(song.title || 'Unknown Title')}</h5>
+                        <p class="mb-0 text-muted fs-6">${escapeHtml(song.Channel || song.channel || song.artist || song.uploader || song.author || 'Unknown Artist')}</p>
                     </div>
 
                     <!-- Progress Section - Expanded -->
@@ -483,7 +538,7 @@ function createMusicSessionCard(song, index) {
                             <i class="bi bi-server text-primary me-2"></i>
                             <span class="fw-medium small">Server</span>
                         </div>
-                        <div class="fw-semibold small text-truncate text-center" title="${song.serverName || 'Unknown Server'}">${song.serverName || 'Unknown Server'}</div>
+                        <div class="fw-semibold small text-truncate text-center" title="${escapeHtml(song.serverName || 'Unknown Server')}">${escapeHtml(song.serverName || 'Unknown Server')}</div>
                     </div>
                 </div>
 
@@ -511,7 +566,7 @@ function createMusicSessionCard(song, index) {
                         <div class="d-flex gap-3">
                             <span class="badge bg-success bg-opacity-25 text-success">
                                 <i class="bi bi-person me-1"></i>
-                                Requested by ${song.requestedBy || 'Unknown'}
+                                Requested by ${escapeHtml(song.requestedBy || 'Unknown')}
                             </span>
                             <span class="badge bg-success bg-opacity-25 text-success">
                                 <i class="bi bi-broadcast me-1"></i>
@@ -568,10 +623,12 @@ function addLogEntry(level, message) {
         'success': 'success'
     }[level.toLowerCase()] || 'secondary';
 
+
+
     logItem.innerHTML = `
         <span class="text-muted small me-3">${timestamp}</span>
         <span class="badge bg-${levelColor} bg-opacity-25 text-${levelColor} me-3 small">[${level}]</span>
-        <span class="text-body">${message}</span>
+        <span class="text-body">${escapeHtml(message)}</span>
     `;
 
     logContainer.appendChild(logItem);
@@ -623,6 +680,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Get command counts from actual files
     getCommandCounts();
+    
+    // Request initial music session update
+    setTimeout(() => {
+        // Request current music status from server
+        if (socket.connected) {
+            socket.emit('requestMusicUpdate');
+        }
+    }, 2000);
 });
 
 // Get real command counts from the bot
@@ -776,11 +841,13 @@ function updateDashboardStreamersList(twitchData) {
             '<span class="badge bg-danger bg-opacity-25 text-danger">LIVE</span>' :
             '<span class="badge bg-secondary bg-opacity-25 text-secondary">Offline</span>';
         
+
+        
         // Show stream title first, then username | game name
-        const primaryText = streamer.lastStreamTitle || 'No recent activity';
+        const primaryText = escapeHtml(streamer.lastStreamTitle || 'No recent activity');
         const secondaryText = streamer.lastGameName ? 
-            `@${streamer.username} | ${streamer.lastGameName}` : 
-            `@${streamer.username}`;
+            `@${escapeHtml(streamer.username)} | ${escapeHtml(streamer.lastGameName)}` : 
+            `@${escapeHtml(streamer.username)}`;
         
         streamerItem.innerHTML = `
             <div class="d-flex align-items-center flex-grow-1">
@@ -923,26 +990,28 @@ function displayStreamers(streamers) {
             const lastChecked = streamer.lastChecked ? 
                 new Date(streamer.lastChecked).toLocaleString() : 'Never';
 
+
+
             // Use stream title if available, otherwise fallback to username
-            const displayTitle = streamer.lastStreamTitle || `@${streamer.username}`;
+            const displayTitle = escapeHtml(streamer.lastStreamTitle || `@${streamer.username}`);
 
             streamerItem.innerHTML = `
                 <div class="d-flex align-items-center">
                     ${statusIcon}
                     <div>
                         <div class="fw-semibold">
-                            <a href="https://twitch.tv/${streamer.username}" target="_blank" class="text-decoration-none">
+                            <a href="https://twitch.tv/${escapeHtml(streamer.username)}" target="_blank" class="text-decoration-none">
                                 ${displayTitle}
                             </a>
                             ${streamer.isLive ? '<span class="badge bg-danger bg-opacity-25 text-danger ms-2">LIVE</span>' : ''}
                         </div>
                         <div class="small text-muted">
-                            @${streamer.username}${streamer.lastGameName ? ` | ${streamer.lastGameName}` : ''}
+                            @${escapeHtml(streamer.username)}${streamer.lastGameName ? ` | ${escapeHtml(streamer.lastGameName)}` : ''}
                             <br>Last checked: ${lastChecked}
                         </div>
                     </div>
                 </div>
-                <button class="btn btn-outline-danger btn-sm" onclick="removeStreamer('${streamer.username}')">
+                <button class="btn btn-outline-danger btn-sm" onclick="removeStreamer('${escapeHtml(streamer.username)}')">
                     <i class="bi bi-trash3"></i>
                 </button>
             `;
@@ -1538,8 +1607,15 @@ socket.on('connect', () => {
         socketStatus.className = 'ms-auto badge bg-info bg-opacity-25 text-info';
     }
     
-    // Request initial Link Scanner status
+    // Reset music sessions on reconnect and request fresh data
     setTimeout(() => {
+        // Clean up any stale sessions first
+        cleanupMusicSessions();
+        
+        // Request fresh music status
+        socket.emit('requestMusicUpdate');
+        
+        // Request initial Link Scanner status
         fetch('/api/linkscanner/status')
             .then(response => response.json())
             .then(data => {

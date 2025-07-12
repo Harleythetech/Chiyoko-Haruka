@@ -183,7 +183,7 @@ class TwitchScraper {
             // Save data after all updates
             this.saveData();
         } catch (error) {
-            console.error(`[TWITCH SCRAPER] Error checking streamer ${streamer.username}:`, error);
+            console.error('[TWITCH SCRAPER] Error checking streamer:', { username: streamer.username, error: error.message });
         }
     }
 
@@ -247,7 +247,7 @@ class TwitchScraper {
             const result = response.data[0];
 
             if (result.errors) {
-                console.error(`[TWITCH SCRAPER] GraphQL errors for ${username}:`, result.errors);
+                console.error('[TWITCH SCRAPER] GraphQL errors for user:', { username: username, errors: result.errors });
                 const errorResult = { isLive: false, error: 'GraphQL API error' };
                 this.apiCache.set(cacheKey, errorResult);
                 return errorResult;
@@ -256,7 +256,7 @@ class TwitchScraper {
             const user = result.data.user;
             
             if (!user) {
-                console.log(`[TWITCH SCRAPER] User ${username} not found`);
+                console.log('[TWITCH SCRAPER] User not found:', { username: username });
                 const notFoundResult = { isLive: false, error: 'User not found' };
                 this.apiCache.set(cacheKey, notFoundResult);
                 return notFoundResult;
@@ -293,7 +293,7 @@ class TwitchScraper {
             return streamData;
 
         } catch (error) {
-            console.error(`[TWITCH SCRAPER] Error checking ${username} via GraphQL:`, error.message);
+            console.error('[TWITCH SCRAPER] Error checking user via GraphQL:', { username: username, error: error.message });
             const errorResult = { isLive: false, error: error.message };
             
             // Cache error for shorter time to allow faster retry
@@ -366,12 +366,17 @@ class TwitchScraper {
 
             await channel.send({ content: '@everyone', embeds: [embed], components: [row] });
         } catch (error) {
-            console.error(`[TWITCH SCRAPER] Error sending notification for ${streamer.username}:`, error);
+            console.error('[TWITCH SCRAPER] Error sending notification for streamer:', { username: streamer.username, error: error.message });
         }
     }
 
     // Add streamer to monitoring
     addStreamer(guildId, channelId, username) {
+        // Validate guildId to prevent prototype pollution
+        if (!guildId || typeof guildId !== 'string' || guildId.includes('__proto__') || guildId.includes('constructor') || guildId.includes('prototype')) {
+            return { success: false, message: 'Invalid guild ID' };
+        }
+
         if (!this.data.guilds[guildId]) {
             this.data.guilds[guildId] = {
                 streamers: [],
@@ -408,6 +413,11 @@ class TwitchScraper {
 
     // Remove streamer from monitoring
     removeStreamer(guildId, username) {
+        // Validate guildId to prevent prototype pollution
+        if (!guildId || typeof guildId !== 'string' || guildId.includes('__proto__') || guildId.includes('constructor') || guildId.includes('prototype')) {
+            return { success: false, message: 'Invalid guild ID' };
+        }
+
         if (!this.data.guilds[guildId]) {
             return { success: false, message: 'No streamers configured for this server' };
         }
@@ -425,11 +435,20 @@ class TwitchScraper {
 
     // Get all streamers for a guild
     getStreamers(guildId) {
+        // Validate guildId to prevent prototype pollution
+        if (!guildId || typeof guildId !== 'string' || guildId.includes('__proto__') || guildId.includes('constructor') || guildId.includes('prototype')) {
+            return [];
+        }
         return this.data.guilds[guildId]?.streamers || [];
     }
 
     // Set notification channel for a guild
     setNotificationChannel(guildId, channelId) {
+        // Validate guildId to prevent prototype pollution
+        if (!guildId || typeof guildId !== 'string' || guildId.includes('__proto__') || guildId.includes('constructor') || guildId.includes('prototype')) {
+            return { success: false, message: 'Invalid guild ID' };
+        }
+
         if (!this.data.guilds[guildId]) {
             this.data.guilds[guildId] = {
                 streamers: [],

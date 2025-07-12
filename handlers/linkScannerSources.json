@@ -8,7 +8,7 @@
       "description": "Unified hosts file with base extensions for adware and malware protection",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T12:52:38.580Z"
+      "lastUpdated": "2025-07-12T16:32:04.690Z"
     },
     {
       "id": "discord-antiscam",
@@ -18,7 +18,7 @@
       "description": "Community-maintained list of Discord scam and phishing domains",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T12:52:38.641Z"
+      "lastUpdated": "2025-07-12T16:32:05.250Z"
     },
     {
       "id": "hagezi-pro",
@@ -28,8 +28,8 @@
       "description": "Professional-grade DNS blocklist with comprehensive protection",
       "enabled": true,
       "addedAt": "2025-01-01T00:00:00.000Z",
-      "lastUpdated": "2025-07-12T12:52:38.865Z"
+      "lastUpdated": "2025-07-12T16:32:06.168Z"
     }
   ],
-  "lastModified": "2025-07-12T12:52:38.865Z"
+  "lastModified": "2025-07-12T16:32:06.169Z"
 }
