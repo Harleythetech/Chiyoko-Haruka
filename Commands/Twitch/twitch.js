@@ -1,14 +1,8 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const TwitchScraper = require('../../handlers/twitch/TwitchScraper.js');
+const axios = require('axios');
 
-// Initialize the scraper (singleton pattern)
-let twitchScraper = null;
-function getTwitchScraper() {
-    if (!twitchScraper) {
-        twitchScraper = new TwitchScraper();
-    }
-    return twitchScraper;
-}
+// Get the WebGUI base URL (assuming it's running on the same server)
+const WEBGUI_BASE_URL = `http://localhost:${process.env.PORT}`;
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -61,7 +55,6 @@ module.exports = {
                 .setDescription('Show Twitch monitoring statistics')),
 
     async execute(interaction) {
-        const scraper = getTwitchScraper();
         const subcommand = interaction.options.getSubcommand();
 
         // Check permissions for most commands (except stats)
@@ -90,50 +83,57 @@ module.exports = {
                 await interaction.deferReply();
 
                 try {
-                    // Test if the Twitch user exists
-                    const testResult = await scraper.checkIfLive(username);
-                    if (testResult.error === 'User not found') {
-                        return await interaction.editReply({
-                            content: `❌ Twitch user \`${username}\` not found. Please check the username and try again.`
-                        });
-                    }
+                    // Use the WebGUI API to add the streamer
+                    const response = await axios.post(`${WEBGUI_BASE_URL}/api/twitch/guild/${interaction.guild.id}/add`, {
+                        username: username,
+                        channelId: channel.id
+                    }, {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 10000
+                    });
 
-                    const result = scraper.addStreamer(
-                        interaction.guild.id,
-                        channel.id,
-                        username,
-                        interaction.user.id
-                    );
+                    const result = response.data;
 
                     if (result.success) {
                         const embed = new EmbedBuilder()
-                            .setTitle('✅ Twitch Streamer Added')
-                            .setColor('#00FF00')
-                            .setDescription(`**${result.streamer.displayName}** is now being monitored!`)
+                            .setColor(0x9146FF)
+                            .setAuthor({
+                                name: `${result.streamer.username} added to monitoring`, 
+                                iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                            })
+                            .setTitle(`✅ Now monitoring @${result.streamer.username}`)
+                            .setURL(`https://www.twitch.tv/${result.streamer.username}`)
+                            .setDescription(`Live notifications will be sent to <#${channel.id}>`)
                             .addFields(
-                                { name: '👤 Streamer', value: result.streamer.displayName, inline: true },
+                                { name: '👤 Streamer', value: `[@${result.streamer.username}](https://twitch.tv/${result.streamer.username})`, inline: true },
                                 { name: '📢 Channel', value: `<#${channel.id}>`, inline: true },
                                 { name: '👨‍💼 Added by', value: `<@${interaction.user.id}>`, inline: true }
                             )
                             .setThumbnail(`https://static-cdn.jtvnw.net/jtv_user_pictures/default-profile_image-70x70.png`)
-                            .setTimestamp();
+                            .setTimestamp()
+                            .setFooter({
+                                text: 'Chiyoko Haruka • Twitch Management',
+                                iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                            });
 
                         await interaction.editReply({ embeds: [embed] });
-
-                        // Start monitoring if not already started
-                        if (!scraper.intervalId) {
-                            scraper.startMonitoring(interaction.client);
-                        }
                     } else {
                         await interaction.editReply({
-                            content: `❌ ${result.message}`
+                            content: `❌ ${result.message || result.error}`
                         });
                     }
                 } catch (error) {
-                    console.error('[TWITCH COMMAND] Error adding streamer:', error);
-                    await interaction.editReply({
-                        content: '❌ An error occurred while adding the streamer. Please try again later.'
-                    });
+                    console.error('[TWITCH COMMAND] Error adding streamer via API:', error);
+                    
+                    if (error.response?.data?.message) {
+                        await interaction.editReply({
+                            content: `❌ ${error.response.data.message}`
+                        });
+                    } else {
+                        await interaction.editReply({
+                            content: '❌ An error occurred while adding the streamer. Please try again later.'
+                        });
+                    }
                 }
                 break;
             }
@@ -141,19 +141,44 @@ module.exports = {
             case 'remove': {
                 const username = interaction.options.getString('username').toLowerCase().trim();
 
-                const result = scraper.removeStreamer(interaction.guild.id, username);
+                try {
+                    // Use the WebGUI API to remove the streamer
+                    const response = await axios.post(`${WEBGUI_BASE_URL}/api/twitch/guild/${interaction.guild.id}/remove`, {
+                        username: username
+                    }, {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 10000
+                    });
 
-                if (result.success) {
-                    const embed = new EmbedBuilder()
-                        .setTitle('✅ Twitch Streamer Removed')
-                        .setColor('#FF4444')
-                        .setDescription(`**${result.streamer.displayName}** is no longer being monitored.`)
-                        .setTimestamp();
+                    const result = response.data;
 
-                    await interaction.reply({ embeds: [embed] });
-                } else {
+                    if (result.success) {
+                        const embed = new EmbedBuilder()
+                            .setColor(0x9146FF)
+                            .setAuthor({
+                                name: `${result.streamer.username} removed from monitoring`, 
+                                iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                            })
+                            .setTitle(`❌ No longer monitoring @${result.streamer.username}`)
+                            .setURL(`https://www.twitch.tv/${result.streamer.username}`)
+                            .setDescription('This streamer has been removed from the monitoring list')
+                            .setTimestamp()
+                            .setFooter({
+                                text: 'Chiyoko Haruka • Twitch Management',
+                                iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                            });
+
+                        await interaction.reply({ embeds: [embed] });
+                    } else {
+                        await interaction.reply({
+                            content: `❌ ${result.message || result.error}`,
+                            ephemeral: true
+                        });
+                    }
+                } catch (error) {
+                    console.error('[TWITCH COMMAND] Error removing streamer via API:', error);
                     await interaction.reply({
-                        content: `❌ ${result.message}`,
+                        content: '❌ An error occurred while removing the streamer. Please try again later.',
                         ephemeral: true
                     });
                 }
@@ -161,48 +186,66 @@ module.exports = {
             }
 
             case 'list': {
-                const streamers = scraper.getStreamers(interaction.guild.id);
+                try {
+                    // Use the WebGUI API to get streamers
+                    const response = await axios.get(`${WEBGUI_BASE_URL}/api/twitch/guild/${interaction.guild.id}`, {
+                        timeout: 10000
+                    });
 
-                if (streamers.length === 0) {
-                    return await interaction.reply({
-                        content: '📭 No Twitch streamers are being monitored in this server.\nUse `/twitch add` to add streamers!',
+                    const data = response.data;
+                    const streamers = data.streamers || [];
+
+                    if (streamers.length === 0) {
+                        return await interaction.reply({
+                            content: '📭 No Twitch streamers are being monitored in this server.\nUse `/twitch add` to add streamers!',
+                            ephemeral: true
+                        });
+                    }
+
+                    const embed = new EmbedBuilder()
+                        .setColor(0x9146FF)
+                        .setAuthor({
+                            name: 'Twitch Monitoring Status', 
+                            iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                        })
+                        .setTitle('📺 Monitored Streamers')
+                        .setTimestamp()
+                        .setFooter({
+                            text: 'Chiyoko Haruka • Twitch Management',
+                            iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                        });
+
+                    let description = '';
+                    streamers.forEach((streamer, index) => {
+                        const status = streamer.isLive ? '🔴 **LIVE**' : '⚫ Offline';
+                        const lastChecked = streamer.lastChecked ? 
+                            `<t:${Math.floor(new Date(streamer.lastChecked).getTime() / 1000)}:R>` : 'Never';
+                        
+                        // Show stream title if available, otherwise username
+                        const displayName = streamer.lastStreamTitle || `@${streamer.username}`;
+                        
+                        description += `**${index + 1}.** [${displayName}](https://twitch.tv/${streamer.username}) - ${status}\n`;
+                        description += `└ @${streamer.username}${streamer.lastGameName ? ` | ${streamer.lastGameName}` : ''}\n`;
+                        description += `└ Last checked: ${lastChecked}\n`;
+                        description += '\n';
+                    });
+
+                    embed.setDescription(description);
+
+                    if (data.notificationChannelId) {
+                        embed.setFooter({ 
+                            text: `Notifications sent to: #${interaction.guild.channels.cache.get(data.notificationChannelId)?.name || 'Unknown'}` 
+                        });
+                    }
+
+                    await interaction.reply({ embeds: [embed] });
+                } catch (error) {
+                    console.error('[TWITCH COMMAND] Error fetching streamers via API:', error);
+                    await interaction.reply({
+                        content: '❌ An error occurred while fetching streamers. Please try again later.',
                         ephemeral: true
                     });
                 }
-
-                const embed = new EmbedBuilder()
-                    .setTitle('📺 Monitored Twitch Streamers')
-                    .setColor('#9146FF')
-                    .setTimestamp();
-
-                let description = '';
-                streamers.forEach((streamer, index) => {
-                    const status = streamer.isLive ? '🔴 **LIVE**' : '⚫ Offline';
-                    const lastChecked = streamer.lastChecked ? 
-                        `<t:${Math.floor(new Date(streamer.lastChecked).getTime() / 1000)}:R>` : 'Never';
-                    
-                    description += `**${index + 1}.** [${streamer.displayName}](https://twitch.tv/${streamer.username}) - ${status}\n`;
-                    description += `└ Last checked: ${lastChecked}\n`;
-                    
-                    if (streamer.lastStreamTitle && streamer.isLive) {
-                        description += `└ **${streamer.lastStreamTitle}**\n`;
-                    }
-                    if (streamer.lastGameName && streamer.isLive) {
-                        description += `└ Playing: ${streamer.lastGameName}\n`;
-                    }
-                    description += '\n';
-                });
-
-                embed.setDescription(description);
-
-                const guildData = scraper.data.guilds[interaction.guild.id];
-                if (guildData && guildData.notificationChannelId) {
-                    embed.setFooter({ 
-                        text: `Notifications sent to: #${interaction.guild.channels.cache.get(guildData.notificationChannelId)?.name || 'Unknown'}` 
-                    });
-                }
-
-                await interaction.reply({ embeds: [embed] });
                 break;
             }
 
@@ -216,15 +259,50 @@ module.exports = {
                     });
                 }
 
-                const result = scraper.setNotificationChannel(interaction.guild.id, channel.id);
+                try {
+                    // Use the WebGUI API to set notification channel
+                    const response = await axios.post(`${WEBGUI_BASE_URL}/api/twitch/guild/${interaction.guild.id}/channel`, {
+                        channelId: channel.id
+                    }, {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 10000
+                    });
 
-                const embed = new EmbedBuilder()
-                    .setTitle('✅ Notification Channel Updated')
-                    .setColor('#00FF00')
-                    .setDescription(`Twitch live notifications will now be sent to <#${channel.id}>`)
-                    .setTimestamp();
+                    const result = response.data;
 
-                await interaction.reply({ embeds: [embed] });
+                    if (result.success) {
+                        const embed = new EmbedBuilder()
+                            .setColor(0x9146FF)
+                            .setAuthor({
+                                name: 'Notification channel updated', 
+                                iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                            })
+                            .setTitle('📢 Channel Configuration')
+                            .setDescription(`Twitch live notifications will now be sent to <#${channel.id}>`)
+                            .addFields(
+                                { name: '📺 Channel', value: `<#${channel.id}>`, inline: true },
+                                { name: '👨‍💼 Updated by', value: `<@${interaction.user.id}>`, inline: true }
+                            )
+                            .setTimestamp()
+                            .setFooter({
+                                text: 'Chiyoko Haruka • Twitch Management',
+                                iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                            });
+
+                        await interaction.reply({ embeds: [embed] });
+                    } else {
+                        await interaction.reply({
+                            content: `❌ ${result.message || result.error}`,
+                            ephemeral: true
+                        });
+                    }
+                } catch (error) {
+                    console.error('[TWITCH COMMAND] Error setting channel via API:', error);
+                    await interaction.reply({
+                        content: '❌ An error occurred while setting the channel. Please try again later.',
+                        ephemeral: true
+                    });
+                }
                 break;
             }
 
@@ -234,35 +312,65 @@ module.exports = {
                 await interaction.deferReply();
 
                 try {
+                    // For the check command, we still use direct scraper access since it's read-only
+                    const TwitchScraper = require('../../handlers/twitch/TwitchScraper.js');
+                    const scraper = new TwitchScraper();
                     const streamData = await scraper.checkIfLive(username);
 
                     const embed = new EmbedBuilder()
-                        .setTitle(`📺 ${username} - Stream Status`)
+                        .setColor(streamData.isLive ? 0x9146FF : 0x6C7B7F)
+                        .setAuthor({
+                            name: streamData.isLive ? `${username} is currently live!` : `${username} is offline`, 
+                            iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                        })
+                        .setTitle(streamData.title || `@${username}`)
                         .setURL(`https://twitch.tv/${username}`)
-                        .setColor(streamData.isLive ? '#00FF00' : '#FF4444')
-                        .setTimestamp();
+                        .setTimestamp()
+                        .setFooter({
+                            text: 'Chiyoko Haruka • Twitch Status Check',
+                            iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                        });
 
                     if (streamData.error) {
                         embed.setDescription(`❌ Error: ${streamData.error}`);
                     } else if (streamData.isLive) {
-                        embed.setDescription('🔴 **CURRENTLY LIVE!**');
-                        
-                        if (streamData.title) {
-                            embed.addFields({ name: '📝 Stream Title', value: streamData.title, inline: false });
-                        }
+                        // Add game field if available
                         if (streamData.game) {
-                            embed.addFields({ name: '🎮 Game/Category', value: streamData.game, inline: true });
+                            embed.addFields({
+                                name: '🎮 Playing',
+                                value: streamData.game,
+                                inline: true
+                            });
                         }
+
+                        // Add viewer count if available
                         if (streamData.viewers) {
-                            embed.addFields({ name: '👥 Viewers', value: streamData.viewers, inline: true });
+                            embed.addFields({
+                                name: '👥 Viewers',
+                                value: streamData.viewers.toLocaleString(),
+                                inline: true
+                            });
                         }
-                        if (streamData.thumbnail) {
-                            embed.setImage(streamData.thumbnail);
+
+                        // Add uptime if available
+                        if (streamData.uptime) {
+                            const hours = Math.floor(streamData.uptime / 60);
+                            const minutes = streamData.uptime % 60;
+                            const uptimeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+                            embed.addFields({
+                                name: '⏱️ Uptime',
+                                value: uptimeStr,
+                                inline: true
+                            });
                         }
+
+                        // Set live preview image
+                        embed.setImage(`https://static-cdn.jtvnw.net/previews-ttv/live_user_${username}-1280x720.jpg`);
                     } else {
-                        embed.setDescription('⚫ **Currently Offline**');
+                        embed.setDescription('⚫ Currently offline - no recent stream activity');
                     }
 
+                    // Set profile image as thumbnail
                     if (streamData.profileImage) {
                         embed.setThumbnail(streamData.profileImage);
                     }
@@ -279,26 +387,45 @@ module.exports = {
             }
 
             case 'stats': {
-                const stats = scraper.getStats();
+                try {
+                    // Use the WebGUI API to get stats
+                    const response = await axios.get(`${WEBGUI_BASE_URL}/api/twitch/stats`, {
+                        timeout: 10000
+                    });
 
-                const embed = new EmbedBuilder()
-                    .setTitle('📊 Twitch Monitoring Statistics')
-                    .setColor('#9146FF')
-                    .addFields(
-                        { name: '🏠 Servers', value: stats.totalGuilds.toString(), inline: true },
-                        { name: '👥 Total Streamers', value: stats.totalStreamers.toString(), inline: true },
-                        { name: '🔴 Currently Live', value: stats.liveStreamers.toString(), inline: true },
-                        { name: '⏱️ Check Interval', value: `${stats.checkInterval / 1000 / 60} minutes`, inline: true },
-                        { name: '🤖 Monitoring Status', value: stats.isMonitoring ? '✅ Active' : '❌ Inactive', inline: true }
-                    )
-                    .setTimestamp();
+                    const stats = response.data;
 
-                await interaction.reply({ embeds: [embed] });
+                    const embed = new EmbedBuilder()
+                        .setColor(0x9146FF)
+                        .setAuthor({
+                            name: 'Twitch Monitoring Statistics', 
+                            iconURL: 'https://github.com/Harleythetech/Chiyoko-Haruka/blob/main/handlers/img/glitch_flat_purple.png?raw=true'
+                        })
+                        .setTitle('📊 System Status')
+                        .setTimestamp()
+                        .setFooter({
+                            text: 'Chiyoko Haruka • Twitch Management',
+                            iconURL: 'https://i.imgur.com/mwOFCBO.png'
+                        })
+                        .addFields(
+                            { name: '🏠 Servers', value: stats.totalGuilds.toString(), inline: true },
+                            { name: '👥 Total Streamers', value: stats.totalStreamers.toString(), inline: true },
+                            { name: '🔴 Currently Live', value: stats.liveStreamers.toString(), inline: true },
+                            { name: '⏱️ Check Interval', value: `${10} seconds`, inline: true },
+                            { name: '🤖 Monitoring Status', value: stats.isMonitoring ? '✅ Active' : '❌ Inactive', inline: true }
+                        )
+                        .setTimestamp();
+
+                    await interaction.reply({ embeds: [embed] });
+                } catch (error) {
+                    console.error('[TWITCH COMMAND] Error fetching stats via API:', error);
+                    await interaction.reply({
+                        content: '❌ An error occurred while fetching statistics. Please try again later.',
+                        ephemeral: true
+                    });
+                }
                 break;
             }
         }
     }
 };
-
-// Export the scraper instance for use in other parts of the application
-module.exports.getTwitchScraper = getTwitchScraper;

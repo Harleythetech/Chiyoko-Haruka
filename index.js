@@ -84,6 +84,9 @@ app.get('/api/twitch/guild/:guildId', (req, res) => {
         return res.json({ error: 'Twitch scraper not initialized' });
     }
     
+    // Reload data to ensure we have the latest information
+    twitchScraper.loadData();
+    
     const { guildId } = req.params;
     const guild = client.guilds.cache.get(guildId);
     
@@ -113,7 +116,7 @@ app.get('/api/twitch/guild/:guildId', (req, res) => {
     });
 });
 
-app.post('/api/twitch/guild/:guildId/add', (req, res) => {
+app.post('/api/twitch/guild/:guildId/add', async (req, res) => {
     if (!twitchScraper) {
         return res.json({ error: 'Twitch scraper not initialized' });
     }
@@ -124,9 +127,26 @@ app.post('/api/twitch/guild/:guildId/add', (req, res) => {
     if (!username || !channelId) {
         return res.json({ error: 'Username and channel ID are required' });
     }
-    
-    const result = twitchScraper.addStreamer(guildId, channelId, username, 'WebPanel');
-    res.json(result);
+
+    try {
+        // Test if the Twitch user exists and get their actual display name
+        const testResult = await twitchScraper.checkIfLive(username);
+        if (testResult.error === 'User not found') {
+            return res.json({ 
+                success: false, 
+                message: `Twitch user '${username}' not found. Please check the username and try again.`
+            });
+        }
+
+        const result = twitchScraper.addStreamer(guildId, channelId, username);
+        res.json(result);
+    } catch (error) {
+        console.error('[WEBGUI API] Error adding streamer:', error);
+        res.json({ 
+            success: false, 
+            message: 'An error occurred while adding the streamer. Please try again later.' 
+        });
+    }
 });
 
 app.post('/api/twitch/guild/:guildId/remove', (req, res) => {
@@ -165,6 +185,9 @@ app.get('/api/twitch/stats', (req, res) => {
     if (!twitchScraper) {
         return res.json({ error: 'Twitch scraper not initialized' });
     }
+    
+    // Reload data to ensure we have the latest information
+    twitchScraper.loadData();
     
     const stats = twitchScraper.getStats();
     res.json(stats);

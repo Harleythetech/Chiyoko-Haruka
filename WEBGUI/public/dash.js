@@ -756,12 +756,18 @@ function updateDashboardStreamersList(twitchData) {
             '<span class="badge bg-danger bg-opacity-25 text-danger">LIVE</span>' :
             '<span class="badge bg-secondary bg-opacity-25 text-secondary">Offline</span>';
         
+        // Show stream title first, then username | game name
+        const primaryText = streamer.lastStreamTitle || 'No recent activity';
+        const secondaryText = streamer.lastGameName ? 
+            `@${streamer.username} | ${streamer.lastGameName}` : 
+            `@${streamer.username}`;
+        
         streamerItem.innerHTML = `
             <div class="d-flex align-items-center flex-grow-1">
                 ${statusIcon}
                 <div class="flex-grow-1">
-                    <div class="fw-medium small">${streamer.displayName}</div>
-                    <div class="small text-muted">${streamer.username}</div>
+                    <div class="fw-medium small">${primaryText}</div>
+                    <div class="small text-muted">${secondaryText}</div>
                 </div>
             </div>
             <div class="ms-2">
@@ -868,13 +874,13 @@ function loadServerConfig(guildId) {
 
 // Display streamers list
 function displayStreamers(streamers) {
-    const streamersList = document.getElementById('streamersList');
+    const modalStreamersList = document.getElementById('modalStreamersList');
     const noStreamersMessage = document.getElementById('noStreamersMessage');
 
     if (!streamers || streamers.length === 0) {
         if (noStreamersMessage) noStreamersMessage.classList.remove('d-none');
-        if (streamersList) {
-            streamersList.querySelectorAll('.streamer-item').forEach(item => item.remove());
+        if (modalStreamersList) {
+            modalStreamersList.querySelectorAll('.streamer-item').forEach(item => item.remove());
         }
         return;
     }
@@ -882,8 +888,8 @@ function displayStreamers(streamers) {
     if (noStreamersMessage) noStreamersMessage.classList.add('d-none');
 
     // Clear existing streamers
-    if (streamersList) {
-        streamersList.querySelectorAll('.streamer-item').forEach(item => item.remove());
+    if (modalStreamersList) {
+        modalStreamersList.querySelectorAll('.streamer-item').forEach(item => item.remove());
 
         // Add streamers
         streamers.forEach(streamer => {
@@ -897,19 +903,22 @@ function displayStreamers(streamers) {
             const lastChecked = streamer.lastChecked ? 
                 new Date(streamer.lastChecked).toLocaleString() : 'Never';
 
+            // Use stream title if available, otherwise fallback to username
+            const displayTitle = streamer.lastStreamTitle || `@${streamer.username}`;
+
             streamerItem.innerHTML = `
                 <div class="d-flex align-items-center">
                     ${statusIcon}
                     <div>
                         <div class="fw-semibold">
                             <a href="https://twitch.tv/${streamer.username}" target="_blank" class="text-decoration-none">
-                                ${streamer.displayName}
+                                ${displayTitle}
                             </a>
                             ${streamer.isLive ? '<span class="badge bg-danger bg-opacity-25 text-danger ms-2">LIVE</span>' : ''}
                         </div>
                         <div class="small text-muted">
-                            Last checked: ${lastChecked}
-                            ${streamer.lastStreamTitle ? `<br>Last title: ${streamer.lastStreamTitle}` : ''}
+                            @${streamer.username}${streamer.lastGameName ? ` | ${streamer.lastGameName}` : ''}
+                            <br>Last checked: ${lastChecked}
                         </div>
                     </div>
                 </div>
@@ -918,7 +927,7 @@ function displayStreamers(streamers) {
                 </button>
             `;
 
-            streamersList.appendChild(streamerItem);
+            modalStreamersList.appendChild(streamerItem);
         });
     }
 }
