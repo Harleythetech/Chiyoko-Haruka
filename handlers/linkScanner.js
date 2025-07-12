@@ -52,9 +52,9 @@ class LinkScanner {
                 allowStale: false
             });
             
-            // Create LRU cache for blocklists with source tracking (1 hour TTL, max 50000 entries)
+            // Create LRU cache for blocklists with source tracking (1 hour TTL, max 500000 entries)
             this.blocklistCache = memoryManager.createLRUCache('linkScanner-blocklist', {
-                max: 50000,
+                max: 500000,
                 ttl: 60 * 60 * 1000, // 1 hour
                 allowStale: true
             });
@@ -230,7 +230,7 @@ class LinkScanner {
         for (const listConfig of enabledSources) {
             try {
                 const response = await fetch(listConfig.url, {
-                    timeout: 10000,
+                    timeout: 30000,
                     headers: {
                         'User-Agent': 'Chiyoko-Haruka Discord Bot - Link Scanner v5.0'
                     }
@@ -313,6 +313,13 @@ class LinkScanner {
                     // Plain domain
                     domain = trimmed;
                 }
+            } else {
+                // Generic parsing - try adblock format first, then plain domain
+                if (trimmed.startsWith('||') && trimmed.endsWith('^')) {
+                    domain = trimmed.slice(2, -1);
+                } else if (this.isValidDomain(trimmed)) {
+                    domain = trimmed;
+                }
             }
             
             // Clean up domain
@@ -370,6 +377,7 @@ class LinkScanner {
 
         // Check against blocklist cache
         const blocklistResult = this.blocklistCache.get(cacheKey);
+        
         if (blocklistResult) {
             result = {
                 isBlocked: true,
@@ -409,6 +417,7 @@ class LinkScanner {
                 };
             }
         }
+
 
         // Cache the result
         this.domainCache.set(cacheKey, result);
@@ -534,9 +543,11 @@ class LinkScanner {
      * Extract domains from URLs in a message
      */
     extractDomains(message) {
+        
         // Match URLs
         const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
         const urls = message.match(urlRegex) || [];
+        
         
         // Extract domains from URLs
         const domains = [];
@@ -545,6 +556,7 @@ class LinkScanner {
                 const urlObj = new URL(url);
                 domains.push(urlObj.hostname.toLowerCase());
             } catch (error) {
+                console.error(`[LINK SCANNER DEBUG] Failed to parse URL ${url}:`, error.message);
                 // Invalid URL, skip
             }
         }
@@ -553,6 +565,7 @@ class LinkScanner {
         const domainRegex = /(?:^|\s)([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}/gi;
         const plainDomains = message.match(domainRegex) || [];
         
+        
         plainDomains.forEach(domain => {
             const cleaned = domain.trim().toLowerCase();
             if (this.isValidDomain(cleaned)) {
@@ -560,6 +573,7 @@ class LinkScanner {
             }
         });
 
+        
         // Remove duplicates
         return [...new Set(domains)];
     }

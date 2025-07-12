@@ -716,9 +716,15 @@ client.on(Events.MessageCreate, async message => {
     // Skip bot messages and messages without content
     if (message.author.bot || !message.content) return;
     
+    // Debug: Log all messages being scanned
+    console.log(`[LINK SCANNER DEBUG] Scanning message from ${message.author.username}: "${message.content.substring(0, 100)}..."`);
+    
     try {
         // Scan the message for scam links
         const scanResult = await linkScanner.scanMessage(message);
+        
+        // Debug: Log scan results
+        console.log(`[LINK SCANNER DEBUG] Scan result - isScam: ${scanResult.isScam}, domains: ${scanResult.domains.length}`);
         
         if (scanResult.isScam) {
             // Log the detection with source information
@@ -777,6 +783,7 @@ client.on(Events.MessageCreate, async message => {
         
     } catch (error) {
         customLogger.error(`[LINK SCANNER] Error scanning message: ${error.message}`);
+        console.error(`[LINK SCANNER DEBUG] Full error:`, error);
     }
 });
 
