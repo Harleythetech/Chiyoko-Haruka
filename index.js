@@ -483,9 +483,9 @@ function monitorResources() {
             const cpuPercent = stats.cpu.toFixed(1);
             const memoryBytes = stats.memory;
             const memoryMB = (memoryBytes / (1024 * 1024)).toFixed(1);
-            
-            // Calculate percentage based on actual memory limit (215MB)
-            const memoryLimitMB = 215; // Our actual memory limit
+
+            // Calculate percentage based on actual memory limit (1024MB)
+            const memoryLimitMB = 1024; // Our actual memory limit
             const memoryPercent = Math.min((parseFloat(memoryMB) / memoryLimitMB) * 100, 100).toFixed(1);
             
             // Get memory manager stats
