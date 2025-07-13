@@ -18,9 +18,9 @@ class MemoryManager {
         
         // Memory thresholds (in MB)
         this.memoryThresholds = {
-            warning: 180,  // 180MB warning
-            critical: 200, // 200MB critical
-            emergency: 215 // 215MB emergency (near restart limit)
+            warning: 800,  // 800MB warning
+            critical: 900, // 900MB critical
+            emergency: 1024 // 1024MB emergency (near restart limit)
         };
         
         this.initializeGarbageCollection();
