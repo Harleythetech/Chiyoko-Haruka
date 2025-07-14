@@ -1,6 +1,6 @@
 <p align="center"><img src="https://i.imgur.com/mwOFCBO.png" width="260" height="220"></p>
 
-### <p align="center">Chiyoko Haruka - V13.4.1-Catalyst</p>
+### <p align="center">Chiyoko Haruka - V14.0.0-Catalyst</p>
 
 ---
 

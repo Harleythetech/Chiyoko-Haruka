@@ -12,13 +12,13 @@ const TWITCH_HEADERS = {
 
 class TwitchScraper {
     constructor() {
-        this.checkInterval = 10000; // 10 seconds
+        this.checkInterval = 5000; // 5 seconds for faster detection
         this.intervalId = null;
         this.dataFile = path.join(__dirname, 'twitchData.json');
         this.data = { guilds: {} };
         this.lastDataReload = 0; // Track when we last reloaded data
         
-        // Initialize caches (will be created lazily)
+        // Disable caching for real-time detection
         this.statusCache = null;
         this.apiCache = null;
         
@@ -26,37 +26,11 @@ class TwitchScraper {
     }
     
     /**
-     * Lazy initialization of caches
+     * Cache initialization disabled for real-time detection
      */
     initializeCaches() {
-        if (this.statusCache && this.apiCache) {
-            return; // Already initialized
-        }
-        
-        try {
-            // Try to get memory manager - it might not be available during early startup
-            const memoryManager = require('../memoryManager');
-            
-            // Cache for streamer status (2 minutes TTL, max 1000 entries)
-            this.statusCache = memoryManager.createLRUCache('twitch-status', {
-                max: 1000,
-                ttl: 2 * 60 * 1000, // 2 minutes
-                allowStale: true
-            });
-            
-            // Cache for API responses (5 minutes TTL, max 500 entries)
-            this.apiCache = memoryManager.createLRUCache('twitch-api', {
-                max: 500,
-                ttl: 5 * 60 * 1000, // 5 minutes
-                allowStale: false
-            });
-            
-        } catch (error) {
-            // Fallback to Map-based caches if memory manager is not available
-            console.warn('[TWITCH SCRAPER] Memory manager not available, using fallback caches');
-            this.statusCache = new Map();
-            this.apiCache = new Map();
-        }
+        // Caching disabled to ensure real-time stream status detection
+        console.log('[TWITCH SCRAPER] Caching disabled for real-time detection');
     }
 
     // Load data from JSON file
@@ -116,8 +90,8 @@ class TwitchScraper {
             await this.checkAllStreamers(client);
         }, this.checkInterval);
 
-        // Do an initial check after 5 seconds
-        setTimeout(() => this.checkAllStreamers(client), 5000);
+        // Do an initial check after 2 seconds for faster startup
+        setTimeout(() => this.checkAllStreamers(client), 2000);
     }
 
     // Stop monitoring
@@ -150,8 +124,8 @@ class TwitchScraper {
                 for (const streamer of guildData.streamers) {
                     await this.checkStreamer(streamer, notificationChannel, guildId);
                     
-                    // Add delay between requests to avoid rate limiting
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // Reduced delay for faster detection (balance between speed and rate limiting)
+                    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second instead of 2
                 }
             }
         } catch (error) {
@@ -176,8 +150,19 @@ class TwitchScraper {
             // Only notify on status change from offline to live
             // This ensures we only send one notification per live session
             if (!wasLive && isNowLive) {
-                // Going live (was offline, now live)
-                await this.sendLiveNotification(notificationChannel, streamer, streamData);
+                // Wait a moment to ensure stream data is fully populated
+                console.log(`[TWITCH SCRAPER] ${streamer.username} went live, waiting for complete data...`);
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 3 seconds
+                
+                // Fetch fresh data again to ensure we have complete information
+                const freshStreamData = await this.checkIfLive(streamer.username);
+                
+                // Validate that we have sufficient data before sending notification
+                if (this.validateStreamData(freshStreamData, streamer.username)) {
+                    await this.sendLiveNotification(notificationChannel, streamer, freshStreamData);
+                } else {
+                    console.log(`[TWITCH SCRAPER] Insufficient data for ${streamer.username}, skipping notification`);
+                }
             }
 
             // Save data after all updates
@@ -187,18 +172,8 @@ class TwitchScraper {
         }
     }
 
-    // Check if streamer is live using Twitch GraphQL API
+    // Check if streamer is live using Twitch GraphQL API (No caching for real-time detection)
     async checkIfLive(username) {
-        // Ensure caches are initialized
-        this.initializeCaches();
-        
-        // Check cache first
-        const cacheKey = username.toLowerCase();
-        const cached = this.apiCache.get(cacheKey);
-        if (cached) {
-            return cached;
-        }
-        
         try {
             const payload = [{
                 operationName: "StreamMetadata",
@@ -241,43 +216,54 @@ class TwitchScraper {
 
             const response = await axios.post(TWITCH_GQL_URL, payload, { 
                 headers: TWITCH_HEADERS,
-                timeout: 10000
+                timeout: 8000 // Reduced timeout for faster detection
             });
 
             const result = response.data[0];
 
             if (result.errors) {
                 console.error('[TWITCH SCRAPER] GraphQL errors for user:', { username: username, errors: result.errors });
-                const errorResult = { isLive: false, error: 'GraphQL API error' };
-                this.apiCache.set(cacheKey, errorResult);
-                return errorResult;
+                return { isLive: false, error: 'GraphQL API error' };
             }
 
             const user = result.data.user;
             
             if (!user) {
                 console.log('[TWITCH SCRAPER] User not found:', { username: username });
-                const notFoundResult = { isLive: false, error: 'User not found' };
-                this.apiCache.set(cacheKey, notFoundResult);
-                return notFoundResult;
+                return { isLive: false, error: 'User not found' };
             }
 
             const stream = user.stream;
-            const isLive = !!stream;
+            
+            // Improved stream detection based on your examples
+            // Stream is live if:
+            // 1. stream object exists AND
+            // 2. Has stream-specific fields like title, viewersCount, etc.
+            const isLive = !!(stream && (
+                stream.title || 
+                stream.viewersCount !== undefined || 
+                stream.game || 
+                stream.createdAt
+            ));
 
             // Calculate uptime if live
             let uptime = null;
-            if (stream) {
-                const start = new Date(stream.createdAt);
-                const now = new Date();
-                uptime = Math.floor((now - start) / 60000); // uptime in minutes
+            if (stream && isLive && stream.createdAt) {
+                try {
+                    const start = new Date(stream.createdAt);
+                    const now = new Date();
+                    uptime = Math.floor((now - start) / 60000); // uptime in minutes
+                } catch (error) {
+                    console.warn(`[TWITCH SCRAPER] Error calculating uptime for ${username}:`, error.message);
+                    uptime = null;
+                }
             }
 
             const streamData = {
                 isLive: isLive,
-                title: stream?.title || user.displayName,
+                title: stream?.title || null, // Don't use displayName as fallback for title
                 game: stream?.game?.displayName || stream?.game?.name || null,
-                viewers: stream?.viewersCount || null,
+                viewers: stream?.viewersCount !== undefined ? stream.viewersCount : null,
                 thumbnail: stream?.game?.boxArtURL || null,
                 profileImage: user.profileImageURL || null,
                 uptime: uptime,
@@ -288,29 +274,64 @@ class TwitchScraper {
                 error: null
             };
 
-            // Cache the result
-            this.apiCache.set(cacheKey, streamData);
+            // No caching - return fresh data immediately
             return streamData;
 
         } catch (error) {
             console.error('[TWITCH SCRAPER] Error checking user via GraphQL:', { username: username, error: error.message });
-            const errorResult = { isLive: false, error: error.message };
-            
-            // Cache error for shorter time to allow faster retry
-            if (typeof this.apiCache.set === 'function') {
-                // LRU cache supports TTL
-                this.apiCache.set(cacheKey, errorResult, { ttl: 30000 }); // 30 seconds
-            } else {
-                // Fallback Map cache - just set normally
-                this.apiCache.set(cacheKey, errorResult);
-            }
-            return errorResult;
+            // Return error immediately without caching
+            return { isLive: false, error: error.message };
         }
+    }
+
+    // Validate stream data before sending notification
+    validateStreamData(streamData, username) {
+        // Must be live
+        if (!streamData.isLive) {
+            console.log(`[TWITCH SCRAPER] ${username} - Not live, skipping notification`);
+            return false;
+        }
+
+        // Must have basic stream information
+        const hasTitle = streamData.title && streamData.title !== username; // Title should be more than just username
+        const hasViewers = streamData.viewers !== null && streamData.viewers !== undefined;
+        const hasUptime = streamData.uptime !== null && streamData.uptime !== undefined;
+        const hasStreamId = streamData.streamId !== null && streamData.streamId !== undefined;
+
+        // Log what data we have
+        console.log(`[TWITCH SCRAPER] ${username} validation:`, {
+            hasTitle,
+            hasViewers,
+            hasUptime,
+            hasStreamId,
+            title: streamData.title,
+            viewers: streamData.viewers,
+            uptime: streamData.uptime,
+            game: streamData.game
+        });
+
+        // Require at least title AND (viewers OR uptime OR streamId)
+        // This ensures we have actual stream data, not just user profile data
+        const isValid = hasTitle && (hasViewers || hasUptime || hasStreamId);
+        
+        if (!isValid) {
+            console.log(`[TWITCH SCRAPER] ${username} - Insufficient stream data for notification`);
+        }
+
+        return isValid;
     }
 
     // Send live notification
     async sendLiveNotification(channel, streamer, streamData) {
         try {
+            // Double-check that we still have valid data
+            if (!this.validateStreamData(streamData, streamer.username)) {
+                console.log(`[TWITCH SCRAPER] Stream data validation failed for ${streamer.username}, aborting notification`);
+                return;
+            }
+
+            console.log(`[TWITCH SCRAPER] Sending notification for ${streamer.username}`);
+
             const embed = new EmbedBuilder()
                 .setColor(0x9146FF)
                 .setAuthor({
@@ -330,28 +351,28 @@ class TwitchScraper {
             // Add game field if available
             if (streamData.game) {
                 embed.addFields({
-                    name: '🎮 Playing',
+                    name: 'Playing',
                     value: streamData.game,
                     inline: true
                 });
             }
 
             // Add viewer count if available
-            if (streamData.viewers) {
+            if (streamData.viewers !== null && streamData.viewers !== undefined) {
                 embed.addFields({
-                    name: '👥 Viewers',
+                    name: 'Viewers',
                     value: streamData.viewers.toLocaleString(),
                     inline: true
                 });
             }
 
             // Add uptime if available
-            if (streamData.uptime) {
+            if (streamData.uptime !== null && streamData.uptime !== undefined) {
                 const hours = Math.floor(streamData.uptime / 60);
                 const minutes = streamData.uptime % 60;
                 const uptimeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
                 embed.addFields({
-                    name: '⏱️ Uptime',
+                    name: 'Uptime',
                     value: uptimeStr,
                     inline: true
                 });
@@ -365,6 +386,7 @@ class TwitchScraper {
             );
 
             await channel.send({ content: '@everyone', embeds: [embed], components: [row] });
+            console.log(`[TWITCH SCRAPER] Successfully sent notification for ${streamer.username}`);
         } catch (error) {
             console.error('[TWITCH SCRAPER] Error sending notification for streamer:', { username: streamer.username, error: error.message });
         }
