@@ -1,5 +1,5 @@
 const axios = require('axios');
-const {SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle} = require('discord.js');
+const {EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -25,13 +25,6 @@ class TwitchScraper {
         this.loadData();
     }
     
-    /**
-     * Cache initialization disabled for real-time detection
-     */
-    initializeCaches() {
-        // Caching disabled to ensure real-time stream status detection
-        console.log('[TWITCH SCRAPER] Caching disabled for real-time detection');
-    }
 
     // Load data from JSON file
     loadData() {
@@ -151,17 +144,14 @@ class TwitchScraper {
             // This ensures we only send one notification per live session
             if (!wasLive && isNowLive) {
                 // Wait a moment to ensure stream data is fully populated
-                console.log(`[TWITCH SCRAPER] ${streamer.username} went live, waiting for complete data...`);
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 3 seconds
-                
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+
                 // Fetch fresh data again to ensure we have complete information
                 const freshStreamData = await this.checkIfLive(streamer.username);
                 
                 // Validate that we have sufficient data before sending notification
                 if (this.validateStreamData(freshStreamData, streamer.username)) {
                     await this.sendLiveNotification(notificationChannel, streamer, freshStreamData);
-                } else {
-                    console.log(`[TWITCH SCRAPER] Insufficient data for ${streamer.username}, skipping notification`);
                 }
             }
 
@@ -229,7 +219,6 @@ class TwitchScraper {
             const user = result.data.user;
             
             if (!user) {
-                console.log('[TWITCH SCRAPER] User not found:', { username: username });
                 return { isLive: false, error: 'User not found' };
             }
 
@@ -288,7 +277,6 @@ class TwitchScraper {
     validateStreamData(streamData, username) {
         // Must be live
         if (!streamData.isLive) {
-            console.log(`[TWITCH SCRAPER] ${username} - Not live, skipping notification`);
             return false;
         }
 
@@ -298,25 +286,10 @@ class TwitchScraper {
         const hasUptime = streamData.uptime !== null && streamData.uptime !== undefined;
         const hasStreamId = streamData.streamId !== null && streamData.streamId !== undefined;
 
-        // Log what data we have
-        console.log(`[TWITCH SCRAPER] ${username} validation:`, {
-            hasTitle,
-            hasViewers,
-            hasUptime,
-            hasStreamId,
-            title: streamData.title,
-            viewers: streamData.viewers,
-            uptime: streamData.uptime,
-            game: streamData.game
-        });
 
         // Require at least title AND (viewers OR uptime OR streamId)
         // This ensures we have actual stream data, not just user profile data
         const isValid = hasTitle && (hasViewers || hasUptime || hasStreamId);
-        
-        if (!isValid) {
-            console.log(`[TWITCH SCRAPER] ${username} - Insufficient stream data for notification`);
-        }
 
         return isValid;
     }
@@ -326,11 +299,9 @@ class TwitchScraper {
         try {
             // Double-check that we still have valid data
             if (!this.validateStreamData(streamData, streamer.username)) {
-                console.log(`[TWITCH SCRAPER] Stream data validation failed for ${streamer.username}, aborting notification`);
                 return;
             }
 
-            console.log(`[TWITCH SCRAPER] Sending notification for ${streamer.username}`);
 
             const embed = new EmbedBuilder()
                 .setColor(0x9146FF)
@@ -386,7 +357,6 @@ class TwitchScraper {
             );
 
             await channel.send({ content: '@everyone', embeds: [embed], components: [row] });
-            console.log(`[TWITCH SCRAPER] Successfully sent notification for ${streamer.username}`);
         } catch (error) {
             console.error('[TWITCH SCRAPER] Error sending notification for streamer:', { username: streamer.username, error: error.message });
         }
